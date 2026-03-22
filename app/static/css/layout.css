@@ -1,0 +1,152 @@
+/* ── NAV ─────────────────────────────────────────────────────────────────────── */
+
+.nav {
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.nav-inner {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 var(--space-lg);
+    display: flex;
+    align-items: center;
+    height: 56px;
+    gap: var(--space-xl);
+}
+
+.nav-brand {
+    font-weight: 700;
+    font-size: var(--font-size-lg);
+    color: var(--color-text);
+    letter-spacing: -0.3px;
+    white-space: nowrap;
+}
+
+.nav-brand span {
+    color: var(--color-accent);
+}
+
+.nav-links {
+    display: flex;
+    gap: var(--space-xs);
+    align-items: center;
+}
+
+.nav-link {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: var(--space-xs) var(--space-md);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--color-text-muted);
+    transition: background var(--transition), color var(--transition);
+}
+
+.nav-link:hover {
+    background: var(--color-bg);
+    color: var(--color-text);
+}
+
+.nav-link.active {
+    background: var(--color-accent-light);
+    color: var(--color-accent-dark);
+}
+
+.nav-date {
+    margin-left: auto;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+}
+
+/* ── PAGE WRAPPER ────────────────────────────────────────────────────────────── */
+
+.page {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: var(--space-xl) var(--space-lg);
+}
+
+.page-header {
+    margin-bottom: var(--space-xl);
+}
+
+.page-title {
+    margin-bottom: var(--space-xs);
+}
+
+.page-subtitle {
+    color: var(--color-text-muted);
+    font-size: var(--font-size-base);
+}
+
+/* ── TWO-COLUMN LAYOUT ───────────────────────────────────────────────────────── */
+
+.two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-lg);
+}
+
+@media (max-width: 700px) {
+    .two-col {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ── TRACKER THREE-PANEL ─────────────────────────────────────────────────────── */
+
+.tracker-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-lg);
+}
+
+.tracker-layout .full-width {
+    grid-column: 1 / -1;
+}
+
+@media (max-width: 700px) {
+    .tracker-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ── JOURNAL LAYOUT ──────────────────────────────────────────────────────────── */
+
+.journal-layout {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: var(--space-lg);
+    align-items: start;
+}
+
+.journal-sidebar {
+    position: sticky;
+    top: 72px;
+    max-height: calc(100vh - 90px);
+    overflow-y: auto;
+}
+
+@media (max-width: 900px) {
+    .journal-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .journal-sidebar {
+        position: static;
+        max-height: none;
+    }
+}
+
+/* ── SECTION ICON COLORS ─────────────────────────────────────────────────────── */
+
+.icon-morning { color: var(--color-morning); }
+.icon-evening { color: var(--color-evening); }
+.icon-journal { color: #e8855e; }
+.icon-technique { color: #3a90d0; }

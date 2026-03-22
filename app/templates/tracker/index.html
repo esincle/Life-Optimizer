@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Tracker — Life Optimizer{% endblock %}
+
+{% block content %}
+<div class="page">
+    <div class="page-header">
+        <h1 class="page-title">Daily Tracker</h1>
+        <p class="page-subtitle" id="tracker-date">Loading today's routines…</p>
+    </div>
+
+    <div class="tracker-layout">
+        <!-- Morning Routine -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title"><span class="icon-morning">☀️</span> Morning Routine</h3>
+            </div>
+            <div class="progress-label">
+                <span id="morning-progress-text">0 / 0 done</span>
+            </div>
+            <div class="progress-wrap">
+                <div class="progress-bar" id="morning-progress-bar" style="width:0%"></div>
+            </div>
+            <ul class="checklist" id="morning-checklist" style="margin-top:var(--space-md)"></ul>
+        </div>
+
+        <!-- Evening Routine -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title"><span class="icon-evening">🌙</span> Evening Routine</h3>
+            </div>
+            <div class="progress-label">
+                <span id="evening-progress-text">0 / 0 done</span>
+            </div>
+            <div class="progress-wrap">
+                <div class="progress-bar" id="evening-progress-bar" style="width:0%"></div>
+            </div>
+            <ul class="checklist" id="evening-checklist" style="margin-top:var(--space-md)"></ul>
+        </div>
+
+        <!-- Streaks -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">🔥 Streaks</h3>
+            </div>
+            <div class="streak-grid" id="streak-grid">
+                <p class="text-muted">Loading…</p>
+            </div>
+        </div>
+
+        <!-- History Calendar -->
+        <div class="card full-width" id="history-card">
+            <div class="card-header">
+                <h3 class="card-title">📅 History</h3>
+            </div>
+            <div style="display:flex;gap:var(--space-lg);flex-wrap:wrap;margin-bottom:var(--space-sm)">
+                <span class="flex items-center gap-sm text-sm"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#eeebe6"></span> None</span>
+                <span class="flex items-center gap-sm text-sm"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#c3ddc5"></span> Some</span>
+                <span class="flex items-center gap-sm text-sm"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#5c7a5f"></span> Full</span>
+                <span class="flex items-center gap-sm text-sm"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#6b5ea8"></span> Journal ·</span>
+            </div>
+            <div class="calendar-grid" id="calendar-headers">
+                <div class="calendar-day-label">Sun</div>
+                <div class="calendar-day-label">Mon</div>
+                <div class="calendar-day-label">Tue</div>
+                <div class="calendar-day-label">Wed</div>
+                <div class="calendar-day-label">Thu</div>
+                <div class="calendar-day-label">Fri</div>
+                <div class="calendar-day-label">Sat</div>
+            </div>
+            <div class="calendar-grid" id="calendar-grid"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Day detail popover -->
+<div class="popover-overlay hidden" id="day-popover-overlay" onclick="closeDayPopover()">
+    <div class="popover" onclick="event.stopPropagation()">
+        <div class="popover-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-md)">
+            <h3 id="popover-date"></h3>
+            <button class="btn btn-ghost" onclick="closeDayPopover()">✕</button>
+        </div>
+        <div id="popover-content"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/tracker.js') }}"></script>
+{% endblock %}

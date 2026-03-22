@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Design — Life Optimizer{% endblock %}
+
+{% block content %}
+<div class="page">
+    <div class="page-header">
+        <h1 class="page-title">Design Your System</h1>
+        <p class="page-subtitle">Configure your routines, techniques, and journal prompts.</p>
+    </div>
+
+    <!-- Morning Routine -->
+    <div class="panel open" id="panel-morning">
+        <div class="panel-header" onclick="togglePanel('panel-morning')">
+            <div class="panel-title">
+                <span class="icon-morning">☀️</span> Morning Routine
+            </div>
+            <span class="panel-chevron">▾</span>
+        </div>
+        <div class="panel-body">
+            <ul class="routine-list" id="morning-list" data-routine="morning"></ul>
+            <button class="btn btn-secondary btn-sm" onclick="showAddStep('morning')">+ Add step</button>
+            <div class="add-form hidden" id="add-form-morning">
+                <div class="add-form-row">
+                    <input type="text" id="morning-title" placeholder="Step title">
+                    <input type="number" id="morning-duration" placeholder="Min" style="max-width:70px">
+                    <button class="btn btn-primary btn-sm" onclick="addStep('morning')">Add</button>
+                    <button class="btn btn-ghost btn-sm" onclick="hideAddStep('morning')">Cancel</button>
+                </div>
+                <div style="margin-top:var(--space-sm)">
+                    <input type="text" id="morning-desc" placeholder="Description (optional)">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Evening Routine -->
+    <div class="panel" id="panel-evening">
+        <div class="panel-header" onclick="togglePanel('panel-evening')">
+            <div class="panel-title">
+                <span class="icon-evening">🌙</span> Evening Routine
+            </div>
+            <span class="panel-chevron">▾</span>
+        </div>
+        <div class="panel-body">
+            <ul class="routine-list" id="evening-list" data-routine="evening"></ul>
+            <button class="btn btn-secondary btn-sm" onclick="showAddStep('evening')">+ Add step</button>
+            <div class="add-form hidden" id="add-form-evening">
+                <div class="add-form-row">
+                    <input type="text" id="evening-title" placeholder="Step title">
+                    <input type="number" id="evening-duration" placeholder="Min" style="max-width:70px">
+                    <button class="btn btn-primary btn-sm" onclick="addStep('evening')">Add</button>
+                    <button class="btn btn-ghost btn-sm" onclick="hideAddStep('evening')">Cancel</button>
+                </div>
+                <div style="margin-top:var(--space-sm)">
+                    <input type="text" id="evening-desc" placeholder="Description (optional)">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Techniques -->
+    <div class="panel" id="panel-techniques">
+        <div class="panel-header" onclick="togglePanel('panel-techniques')">
+            <div class="panel-title">
+                <span class="icon-technique">⚡</span> Techniques Library
+            </div>
+            <span class="panel-chevron">▾</span>
+        </div>
+        <div class="panel-body">
+            <div class="technique-grid" id="technique-grid"></div>
+            <button class="btn btn-secondary btn-sm" onclick="showAddTechnique()">+ Add technique</button>
+            <div class="add-form hidden" id="add-form-technique">
+                <div class="field">
+                    <label>Name</label>
+                    <input type="text" id="tech-name" placeholder="e.g. Pomodoro">
+                </div>
+                <div class="field">
+                    <label>Category</label>
+                    <input type="text" id="tech-category" placeholder="e.g. focus, wellness">
+                </div>
+                <div class="field">
+                    <label>Description</label>
+                    <textarea id="tech-desc" placeholder="How it works and when to use it…"></textarea>
+                </div>
+                <div class="flex gap-sm">
+                    <button class="btn btn-primary btn-sm" onclick="addTechnique()">Add</button>
+                    <button class="btn btn-ghost btn-sm" onclick="hideAddTechnique()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Journal Templates -->
+    <div class="panel" id="panel-journal">
+        <div class="panel-header" onclick="togglePanel('panel-journal')">
+            <div class="panel-title">
+                <span class="icon-journal">📓</span> Journal Templates
+            </div>
+            <span class="panel-chevron">▾</span>
+        </div>
+        <div class="panel-body">
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchPromptTab('gratitude', this)">🙏 Gratitude</button>
+                <button class="tab-btn" onclick="switchPromptTab('evening', this)">🌙 Evening</button>
+            </div>
+            <div id="prompts-gratitude" class="tab-pane active">
+                <ul class="routine-list" id="prompt-list-gratitude" data-ptype="gratitude"></ul>
+                <button class="btn btn-secondary btn-sm" onclick="showAddPrompt('gratitude')">+ Add prompt</button>
+                <div class="add-form hidden" id="add-form-prompt-gratitude">
+                    <div class="add-form-row">
+                        <input type="text" id="prompt-text-gratitude" placeholder="e.g. What are you grateful for today?">
+                        <button class="btn btn-primary btn-sm" onclick="addPrompt('gratitude')">Add</button>
+                        <button class="btn btn-ghost btn-sm" onclick="hideAddPrompt('gratitude')">Cancel</button>
+                    </div>
+                </div>
+            </div>
+            <div id="prompts-evening" class="tab-pane">
+                <ul class="routine-list" id="prompt-list-evening" data-ptype="evening"></ul>
+                <button class="btn btn-secondary btn-sm" onclick="showAddPrompt('evening')">+ Add prompt</button>
+                <div class="add-form hidden" id="add-form-prompt-evening">
+                    <div class="add-form-row">
+                        <input type="text" id="prompt-text-evening" placeholder="e.g. What challenged you today?">
+                        <button class="btn btn-primary btn-sm" onclick="addPrompt('evening')">Add</button>
+                        <button class="btn btn-ghost btn-sm" onclick="hideAddPrompt('evening')">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/design.js') }}"></script>
+{% endblock %}

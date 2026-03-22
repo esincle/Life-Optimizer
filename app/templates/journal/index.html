@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Journal — Life Optimizer{% endblock %}
+
+{% block content %}
+<div class="page">
+    <div class="page-header">
+        <h1 class="page-title">Journal</h1>
+        <p class="page-subtitle">Reflect, capture gratitude, and track your thoughts.</p>
+    </div>
+
+    <div class="journal-layout">
+        <!-- Main composer area -->
+        <div>
+            <div class="card">
+                <div class="tabs">
+                    <button class="tab-btn active" onclick="switchJournalTab('gratitude', this)">🙏 Gratitude</button>
+                    <button class="tab-btn" onclick="switchJournalTab('evening', this)">🌙 Evening Reflection</button>
+                </div>
+
+                <div id="journal-gratitude" class="tab-pane active">
+                    <div id="gratitude-prompts"></div>
+                    <div class="flex gap-sm" style="margin-top:var(--space-lg)">
+                        <button class="btn btn-primary" onclick="saveEntry('gratitude')">Save Gratitude Entry</button>
+                        <span id="gratitude-saved-msg" class="text-muted" style="align-self:center"></span>
+                    </div>
+                </div>
+
+                <div id="journal-evening" class="tab-pane">
+                    <div id="evening-prompts"></div>
+                    <div class="flex gap-sm" style="margin-top:var(--space-lg)">
+                        <button class="btn btn-primary" onclick="saveEntry('evening')">Save Evening Entry</button>
+                        <span id="evening-saved-msg" class="text-muted" style="align-self:center"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar: past entries + search -->
+        <div class="journal-sidebar">
+            <div class="card">
+                <div style="margin-bottom:var(--space-md)">
+                    <input type="text" id="journal-search" placeholder="🔍 Search entries…" oninput="onSearch(this.value)">
+                </div>
+                <div id="entry-list-container">
+                    <p class="text-muted text-sm" style="padding:var(--space-sm) 0">Loading…</p>
+                </div>
+                <button class="btn btn-ghost" id="load-more-btn" style="width:100%;margin-top:var(--space-sm);display:none"
+                    onclick="loadMoreEntries()">Load more</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Past entry detail modal -->
+<div class="popover-overlay hidden" id="entry-detail-overlay" onclick="closeEntryDetail()">
+    <div class="popover" style="max-width:520px" onclick="event.stopPropagation()">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-md)">
+            <h3 id="entry-detail-title"></h3>
+            <button class="btn btn-ghost" onclick="closeEntryDetail()">✕</button>
+        </div>
+        <div id="entry-detail-body" style="max-height:60vh;overflow-y:auto"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/journal.js') }}"></script>
+{% endblock %}
