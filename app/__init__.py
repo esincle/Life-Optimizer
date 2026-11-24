@@ -12,15 +12,18 @@ def create_app(config=DevelopmentConfig):
     from app.routes.design import design_bp
     from app.routes.tracker import tracker_bp
     from app.routes.journal import journal_bp
+    from app.routes.dashboard import dashboard_bp
 
     app.register_blueprint(design_bp)
     app.register_blueprint(tracker_bp)
     app.register_blueprint(journal_bp)
+    app.register_blueprint(dashboard_bp)
 
     @app.route("/")
     def index():
-        return redirect(url_for("tracker.index"))
+        return redirect(url_for("dashboard.index"))
 
+    # Blueprints import models; create_all registers every table they define
     with app.app_context():
         db.create_all()
 

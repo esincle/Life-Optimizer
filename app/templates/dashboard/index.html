@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Today — Life Optimizer{% endblock %}
+
+{% block content %}
+<div class="page">
+    <div class="page-header today-header">
+        <div>
+            <p class="brand-mark">Life Optimizer</p>
+            <h1 class="page-title">Today</h1>
+            <p class="page-subtitle" id="today-date">Loading…</p>
+        </div>
+        <div class="today-header-actions">
+            <button class="btn btn-secondary btn-sm" id="btn-enable-push" type="button">Enable computer reminders</button>
+            <span class="push-status text-muted" id="push-status"></span>
+        </div>
+    </div>
+
+    <div class="today-grid">
+        <!-- Todos -->
+        <section class="card today-section" id="section-todos">
+            <div class="card-header">
+                <h3 class="card-title">To-dos</h3>
+                <button class="btn btn-secondary btn-sm" type="button" onclick="toggleTodoForm()">+ Add</button>
+            </div>
+            <div class="add-form hidden" id="todo-form">
+                <div class="field">
+                    <label for="todo-title">Task</label>
+                    <input type="text" id="todo-title" placeholder="What needs doing?">
+                </div>
+                <div class="form-grid-2">
+                    <div class="field">
+                        <label for="todo-importance">Importance <span id="todo-imp-val">3</span>/5</label>
+                        <input type="range" id="todo-importance" min="1" max="5" value="3" oninput="document.getElementById('todo-imp-val').textContent=this.value">
+                    </div>
+                    <div class="field">
+                        <label for="todo-effort">Effort <span id="todo-eff-val">3</span>/5</label>
+                        <input type="range" id="todo-effort" min="1" max="5" value="3" oninput="document.getElementById('todo-eff-val').textContent=this.value">
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="todo-due">Due (optional)</label>
+                    <input type="date" id="todo-due">
+                </div>
+                <div class="flex gap-sm">
+                    <button class="btn btn-primary btn-sm" type="button" onclick="addTodo()">Add todo</button>
+                    <button class="btn btn-ghost btn-sm" type="button" onclick="toggleTodoForm(false)">Cancel</button>
+                </div>
+            </div>
+            <ul class="checklist" id="todo-list"></ul>
+            <p class="empty-hint text-muted hidden" id="todo-empty">No open todos — add one above.</p>
+        </section>
+
+        <!-- Near-term goals -->
+        <section class="card today-section" id="section-goals">
+            <div class="card-header">
+                <h3 class="card-title">Near-term goals</h3>
+                <button class="btn btn-secondary btn-sm" type="button" onclick="toggleGoalForm()">+ Add</button>
+            </div>
+            <div class="add-form hidden" id="goal-form">
+                <div class="field">
+                    <label for="goal-title">Goal</label>
+                    <input type="text" id="goal-title" placeholder="e.g. Run a consistent Zone 2 week">
+                </div>
+                <div class="field">
+                    <label for="goal-desc">Notes</label>
+                    <input type="text" id="goal-desc" placeholder="Optional detail">
+                </div>
+                <div class="field">
+                    <label for="goal-target">Target date</label>
+                    <input type="date" id="goal-target">
+                </div>
+                <div class="flex gap-sm">
+                    <button class="btn btn-primary btn-sm" type="button" onclick="addGoal()">Add goal</button>
+                    <button class="btn btn-ghost btn-sm" type="button" onclick="toggleGoalForm(false)">Cancel</button>
+                </div>
+            </div>
+            <ul class="goal-list" id="goal-list"></ul>
+            <p class="empty-hint text-muted hidden" id="goal-empty">No active goals yet.</p>
+        </section>
+
+        <!-- Nutrition -->
+        <section class="card today-section" id="section-nutrition">
+            <div class="card-header">
+                <h3 class="card-title">Calories &amp; protein</h3>
+                <a class="btn btn-ghost btn-sm" href="/design/#panel-nutrition">Adjust goals</a>
+            </div>
+            <div class="macro-summary" id="macro-summary">
+                <div class="macro-block">
+                    <div class="progress-label">
+                        <span>Calories</span>
+                        <span id="cal-label">0 / 0</span>
+                    </div>
+                    <div class="progress-wrap">
+                        <div class="progress-bar" id="cal-bar" style="width:0%"></div>
+                    </div>
+                </div>
+                <div class="macro-block">
+                    <div class="progress-label">
+                        <span>Protein</span>
+                        <span id="pro-label">0 / 0 g</span>
+                    </div>
+                    <div class="progress-wrap">
+                        <div class="progress-bar progress-bar-protein" id="pro-bar" style="width:0%"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="add-form nutrition-quick" id="nutrition-form">
+                <div class="add-form-row">
+                    <input type="text" id="food-label" placeholder="Meal or snack">
+                    <input type="number" id="food-cal" placeholder="kcal" style="max-width:80px" min="0">
+                    <input type="number" id="food-pro" placeholder="g protein" style="max-width:90px" min="0">
+                    <button class="btn btn-primary btn-sm" type="button" onclick="addFood()">Log</button>
+                </div>
+            </div>
+            <ul class="entry-list compact" id="food-list"></ul>
+        </section>
+
+        <!-- Workouts -->
+        <section class="card today-section" id="section-workouts">
+            <div class="card-header">
+                <h3 class="card-title">Workouts this week</h3>
+            </div>
+            <div class="workout-overview" id="workout-overview">
+                <div class="workout-stat">
+                    <div class="workout-stat-label">Zone 2</div>
+                    <div class="workout-stat-value" id="zone2-stat">0</div>
+                    <div class="workout-stat-meta" id="zone2-meta">0 min</div>
+                </div>
+                <div class="workout-stat">
+                    <div class="workout-stat-label">Lifting</div>
+                    <div class="workout-stat-value" id="lifting-stat">0</div>
+                    <div class="workout-stat-meta" id="lifting-meta">0 min</div>
+                </div>
+            </div>
+            <div class="add-form" id="workout-form">
+                <div class="add-form-row wrap">
+                    <select id="workout-kind" style="max-width:140px">
+                        <option value="zone2">Zone 2</option>
+                        <option value="lifting">Lifting</option>
+                    </select>
+                    <input type="text" id="workout-title" placeholder="Session name (optional)">
+                    <input type="number" id="workout-mins" placeholder="Min" style="max-width:70px" min="1">
+                    <button class="btn btn-primary btn-sm" type="button" onclick="addWorkout()">Log</button>
+                </div>
+            </div>
+            <ul class="entry-list compact" id="workout-list"></ul>
+        </section>
+    </div>
+
+    <p class="today-footer text-muted">
+        Routines live on <a href="/tracker/">Tracker</a> · configure goals &amp; reminders in <a href="/design/">Design</a>
+    </p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

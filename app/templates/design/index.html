@@ -5,11 +5,69 @@
 <div class="page">
     <div class="page-header">
         <h1 class="page-title">Design Your System</h1>
-        <p class="page-subtitle">Configure your routines, techniques, and journal prompts.</p>
+        <p class="page-subtitle">Configure routines, nutrition goals, reminders, techniques, and journal prompts.</p>
+    </div>
+
+    <!-- Nutrition goals -->
+    <div class="panel open" id="panel-nutrition">
+        <div class="panel-header" onclick="togglePanel('panel-nutrition')">
+            <div class="panel-title">
+                Calories &amp; protein goals
+            </div>
+            <span class="panel-chevron">▾</span>
+        </div>
+        <div class="panel-body">
+            <p class="text-muted" style="margin-bottom:var(--space-md);font-size:var(--font-size-sm)">
+                Adjust daily targets used on the Today dashboard.
+            </p>
+            <div class="form-grid-2">
+                <div class="field">
+                    <label for="design-cal-goal">Daily calorie goal</label>
+                    <input type="number" id="design-cal-goal" min="0" step="50">
+                </div>
+                <div class="field">
+                    <label for="design-pro-goal">Daily protein goal (g)</label>
+                    <input type="number" id="design-pro-goal" min="0" step="5">
+                </div>
+            </div>
+            <button class="btn btn-primary btn-sm" type="button" onclick="saveNutritionGoals()">Save goals</button>
+        </div>
+    </div>
+
+    <!-- Computer reminders -->
+    <div class="panel" id="panel-reminders">
+        <div class="panel-header" onclick="togglePanel('panel-reminders')">
+            <div class="panel-title">
+                Computer reminders
+            </div>
+            <span class="panel-chevron">▾</span>
+        </div>
+        <div class="panel-body">
+            <p class="text-muted" style="margin-bottom:var(--space-md);font-size:var(--font-size-sm)">
+                Browser push on this computer while Life Optimizer is open. Enable notifications from the Today page.
+            </p>
+            <ul class="routine-list" id="reminder-list"></ul>
+            <button class="btn btn-secondary btn-sm" type="button" onclick="showAddReminder()">+ Add reminder</button>
+            <div class="add-form hidden" id="add-form-reminder">
+                <div class="add-form-row wrap">
+                    <input type="text" id="reminder-label" placeholder="Label">
+                    <input type="time" id="reminder-time" style="max-width:130px">
+                    <select id="reminder-kind" style="max-width:140px">
+                        <option value="custom">Custom</option>
+                        <option value="morning">Morning</option>
+                        <option value="evening">Evening</option>
+                        <option value="nutrition">Nutrition</option>
+                        <option value="workout">Workout</option>
+                    </select>
+                    <button class="btn btn-primary btn-sm" type="button" onclick="addReminder()">Add</button>
+                    <button class="btn btn-ghost btn-sm" type="button" onclick="hideAddReminder()">Cancel</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Morning Routine -->
-    <div class="panel open" id="panel-morning">
+    <div class="panel" id="panel-morning">
         <div class="panel-header" onclick="togglePanel('panel-morning')">
             <div class="panel-title">
                 <span class="icon-morning">☀️</span> Morning Routine

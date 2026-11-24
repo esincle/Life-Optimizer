@@ -150,3 +150,58 @@
 .icon-evening { color: var(--color-evening); }
 .icon-journal { color: #e8855e; }
 .icon-technique { color: #3a90d0; }
+
+/* ── TODAY DASHBOARD ─────────────────────────────────────────────────────────── */
+
+.today-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--space-lg);
+    flex-wrap: wrap;
+}
+
+.brand-mark {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-accent-dark);
+    margin-bottom: var(--space-xs);
+}
+
+.today-header-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--space-xs);
+}
+
+.push-status {
+    font-size: var(--font-size-xs);
+}
+
+.today-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-lg);
+}
+
+.today-section {
+    min-height: 120px;
+}
+
+.today-footer {
+    margin-top: var(--space-xl);
+    font-size: var(--font-size-sm);
+}
+
+@media (max-width: 800px) {
+    .today-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .today-header-actions {
+        align-items: flex-start;
+    }
+}

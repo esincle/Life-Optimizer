@@ -1,12 +1,123 @@
 // Design page logic
 
 document.addEventListener("DOMContentLoaded", () => {
+    loadNutritionGoals();
+    loadReminders();
     loadRoutine("morning");
     loadRoutine("evening");
     loadTechniques();
     loadPrompts("gratitude");
     loadPrompts("evening");
+    // Open nutrition panel if linked with hash
+    if (location.hash === "#panel-nutrition") {
+        document.getElementById("panel-nutrition")?.classList.add("open");
+    }
 });
+
+// ── NUTRITION GOALS ───────────────────────────────────────────────────────────
+
+async function loadNutritionGoals() {
+    try {
+        const t = await api.get("/today/api/nutrition/targets");
+        document.getElementById("design-cal-goal").value = t.calorie_goal;
+        document.getElementById("design-pro-goal").value = t.protein_goal;
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+async function saveNutritionGoals() {
+    const calorie_goal = Number(document.getElementById("design-cal-goal").value);
+    const protein_goal = Number(document.getElementById("design-pro-goal").value);
+    try {
+        await api.put("/today/api/nutrition/targets", { calorie_goal, protein_goal });
+        showToast("Nutrition goals saved", "success");
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+// ── REMINDERS ─────────────────────────────────────────────────────────────────
+
+async function loadReminders() {
+    try {
+        let list = await api.get("/today/api/reminders");
+        if (!list.length) {
+            list = await api.post("/today/api/reminders/seed", {});
+        }
+        renderReminders(list);
+        window.LifeReminders?.refreshReminders?.();
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+function renderReminders(list) {
+    const el = document.getElementById("reminder-list");
+    if (!list.length) {
+        el.innerHTML = `<li class="text-muted" style="padding:var(--space-sm)">No reminders yet.</li>`;
+        return;
+    }
+    el.innerHTML = list.map(r => `
+        <li class="routine-item" data-id="${r.id}">
+            <div class="routine-item-content">
+                <div class="routine-item-title">${escHtml(r.label)}
+                    <span class="badge">${escHtml(r.time_of_day)}</span>
+                    <span class="badge">${escHtml(r.kind)}</span>
+                    ${r.enabled ? "" : '<span class="badge">off</span>'}
+                </div>
+            </div>
+            <div class="routine-item-actions" style="opacity:1">
+                <button class="btn btn-ghost btn-sm" type="button" onclick="toggleReminder(${r.id}, ${r.enabled ? "false" : "true"})">${r.enabled ? "Disable" : "Enable"}</button>
+                <button class="btn btn-danger btn-sm" type="button" onclick="deleteReminder(${r.id})">🗑</button>
+            </div>
+        </li>
+    `).join("");
+}
+
+function showAddReminder() {
+    document.getElementById("add-form-reminder").classList.remove("hidden");
+    document.getElementById("reminder-label").focus();
+}
+
+function hideAddReminder() {
+    document.getElementById("add-form-reminder").classList.add("hidden");
+}
+
+async function addReminder() {
+    const label = document.getElementById("reminder-label").value.trim();
+    const time_of_day = document.getElementById("reminder-time").value;
+    const kind = document.getElementById("reminder-kind").value;
+    if (!label || !time_of_day) return showToast("Label and time required", "error");
+    try {
+        await api.post("/today/api/reminders", { label, time_of_day, kind, enabled: true });
+        document.getElementById("reminder-label").value = "";
+        document.getElementById("reminder-time").value = "";
+        hideAddReminder();
+        await loadReminders();
+        showToast("Reminder added", "success");
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+async function toggleReminder(id, enabled) {
+    try {
+        await api.put(`/today/api/reminders/${id}`, { enabled });
+        await loadReminders();
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+async function deleteReminder(id) {
+    try {
+        await api.delete(`/today/api/reminders/${id}`);
+        await loadReminders();
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
 
 // ── PANELS ────────────────────────────────────────────────────────────────────
 
