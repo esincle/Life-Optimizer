@@ -627,11 +627,58 @@
 
 .empty-hint { font-size: var(--font-size-sm); padding: var(--space-sm) 0; }
 
-.todo-item {
-    align-items: center;
+.todo-tree {
+    list-style: none;
+}
+
+.todo-block {
+    border-bottom: 1px solid var(--color-border);
+    padding: var(--space-sm) 0 var(--space-md);
+}
+
+.todo-block:last-child {
+    border-bottom: none;
+}
+
+.todo-row {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-md);
 }
 
 .todo-body { flex: 1; min-width: 0; }
+
+.todo-steps {
+    list-style: none;
+    margin: var(--space-sm) 0 0 34px;
+}
+
+.todo-step {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 4px 0;
+}
+
+.todo-step.done .todo-step-title {
+    text-decoration: line-through;
+    color: var(--color-text-muted);
+}
+
+.todo-step-title {
+    flex: 1;
+    font-size: var(--font-size-sm);
+}
+
+.todo-add-step {
+    display: flex;
+    gap: var(--space-sm);
+    margin: var(--space-sm) 0 0 34px;
+}
+
+.todo-add-step input {
+    flex: 1;
+}
 
 .todo-metrics {
     display: flex;
@@ -694,11 +741,65 @@
     padding-right: 0;
 }
 
+.deficit-line {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+    margin-top: 4px;
+}
+
+.deficit-line.is-deficit { color: var(--color-accent-dark); font-weight: 600; }
+.deficit-line.is-surplus { color: var(--color-morning); font-weight: 600; }
+
+.week-nutrition {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-md);
+    margin-bottom: var(--space-md);
+}
+
+.week-stat {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: var(--space-md);
+    text-align: center;
+}
+
+.week-stat-label {
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.week-stat-value {
+    font-size: var(--font-size-lg);
+    font-weight: 700;
+    color: var(--color-accent-dark);
+    margin: 4px 0;
+}
+
+.week-stat-meta {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+}
+
 .workout-overview {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--space-md);
     margin-bottom: var(--space-md);
+}
+
+.workout-overview-3 {
+    grid-template-columns: 1fr 1fr 1fr;
+}
+
+@media (max-width: 560px) {
+    .workout-overview-3 {
+        grid-template-columns: 1fr;
+    }
 }
 
 .workout-stat {
@@ -747,9 +848,19 @@
     color: #2a6aa0;
 }
 
-.kind-lifting {
+.kind-full {
+    background: #fef3e0;
+    color: #92660a;
+}
+
+.kind-upper {
     background: var(--color-accent-light);
     color: var(--color-accent-dark);
+}
+
+.kind-lower {
+    background: #ede9f7;
+    color: #4a3f80;
 }
 
 .goal-list {

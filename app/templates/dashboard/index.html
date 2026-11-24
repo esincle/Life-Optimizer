@@ -24,8 +24,12 @@
             </div>
             <div class="add-form hidden" id="todo-form">
                 <div class="field">
-                    <label for="todo-title">Task</label>
-                    <input type="text" id="todo-title" placeholder="What needs doing?">
+                    <label for="todo-title">Big todo</label>
+                    <input type="text" id="todo-title" placeholder="e.g. Tax return">
+                </div>
+                <div class="field">
+                    <label for="todo-first-step">First step (optional)</label>
+                    <input type="text" id="todo-first-step" placeholder="e.g. Print tax return">
                 </div>
                 <div class="form-grid-2">
                     <div class="field">
@@ -46,7 +50,7 @@
                     <button class="btn btn-ghost btn-sm" type="button" onclick="toggleTodoForm(false)">Cancel</button>
                 </div>
             </div>
-            <ul class="checklist" id="todo-list"></ul>
+            <ul class="todo-tree" id="todo-list"></ul>
             <p class="empty-hint text-muted hidden" id="todo-empty">No open todos — add one above.</p>
         </section>
 
@@ -59,7 +63,7 @@
             <div class="add-form hidden" id="goal-form">
                 <div class="field">
                     <label for="goal-title">Goal</label>
-                    <input type="text" id="goal-title" placeholder="e.g. Run a consistent Zone 2 week">
+                    <input type="text" id="goal-title" placeholder="e.g. Consistent Zone 2 week">
                 </div>
                 <div class="field">
                     <label for="goal-desc">Notes</label>
@@ -82,17 +86,15 @@
         <section class="card today-section" id="section-nutrition">
             <div class="card-header">
                 <h3 class="card-title">Calories &amp; protein</h3>
-                <a class="btn btn-ghost btn-sm" href="/design/#panel-nutrition">Adjust goals</a>
+                <a class="btn btn-ghost btn-sm" href="/design/#panel-nutrition">Settings</a>
             </div>
             <div class="macro-summary" id="macro-summary">
                 <div class="macro-block">
                     <div class="progress-label">
-                        <span>Calories</span>
-                        <span id="cal-label">0 / 0</span>
+                        <span>Today’s intake</span>
+                        <span id="cal-label">0 kcal</span>
                     </div>
-                    <div class="progress-wrap">
-                        <div class="progress-bar" id="cal-bar" style="width:0%"></div>
-                    </div>
+                    <div class="deficit-line" id="deficit-line">Deficit / surplus vs maintenance…</div>
                 </div>
                 <div class="macro-block">
                     <div class="progress-label">
@@ -102,6 +104,18 @@
                     <div class="progress-wrap">
                         <div class="progress-bar progress-bar-protein" id="pro-bar" style="width:0%"></div>
                     </div>
+                </div>
+            </div>
+            <div class="week-nutrition" id="week-nutrition">
+                <div class="week-stat">
+                    <div class="week-stat-label">Week deficit</div>
+                    <div class="week-stat-value" id="week-deficit">—</div>
+                    <div class="week-stat-meta" id="week-deficit-meta">vs maintenance</div>
+                </div>
+                <div class="week-stat">
+                    <div class="week-stat-label">Protein ±15%</div>
+                    <div class="week-stat-value" id="week-protein-hits">0</div>
+                    <div class="week-stat-meta">days on target</div>
                 </div>
             </div>
             <div class="add-form nutrition-quick" id="nutrition-form">
@@ -120,23 +134,30 @@
             <div class="card-header">
                 <h3 class="card-title">Workouts this week</h3>
             </div>
-            <div class="workout-overview" id="workout-overview">
+            <div class="workout-overview workout-overview-3" id="workout-overview">
+                <div class="workout-stat">
+                    <div class="workout-stat-label">Upper</div>
+                    <div class="workout-stat-value" id="upper-stat">0</div>
+                    <div class="workout-stat-meta" id="upper-meta">incl. full</div>
+                </div>
+                <div class="workout-stat">
+                    <div class="workout-stat-label">Lower</div>
+                    <div class="workout-stat-value" id="lower-stat">0</div>
+                    <div class="workout-stat-meta" id="lower-meta">incl. full</div>
+                </div>
                 <div class="workout-stat">
                     <div class="workout-stat-label">Zone 2</div>
                     <div class="workout-stat-value" id="zone2-stat">0</div>
                     <div class="workout-stat-meta" id="zone2-meta">0 min</div>
                 </div>
-                <div class="workout-stat">
-                    <div class="workout-stat-label">Lifting</div>
-                    <div class="workout-stat-value" id="lifting-stat">0</div>
-                    <div class="workout-stat-meta" id="lifting-meta">0 min</div>
-                </div>
             </div>
             <div class="add-form" id="workout-form">
                 <div class="add-form-row wrap">
                     <select id="workout-kind" style="max-width:140px">
+                        <option value="upper">Upper</option>
+                        <option value="lower">Lower</option>
+                        <option value="full">Full body</option>
                         <option value="zone2">Zone 2</option>
-                        <option value="lifting">Lifting</option>
                     </select>
                     <input type="text" id="workout-title" placeholder="Session name (optional)">
                     <input type="number" id="workout-mins" placeholder="Min" style="max-width:70px" min="1">

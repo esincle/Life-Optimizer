@@ -2,10 +2,12 @@ from datetime import date, datetime, timedelta
 from flask import Blueprint, render_template, request, jsonify
 from app.extensions import db
 from app.models import (
-    Todo, NutritionTarget, NutritionEntry, Workout, Goal, Reminder,
+    Todo, TodoStep, NutritionTarget, NutritionEntry, Workout, Goal, Reminder,
 )
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/today")
+
+PROTEIN_TOLERANCE = 0.15  # within 15% of daily protein goal
 
 
 @dashboard_bp.route("/")
@@ -25,7 +27,7 @@ def _clamp(n, lo, hi):
 def get_or_create_nutrition_target():
     target = NutritionTarget.query.first()
     if not target:
-        target = NutritionTarget(calorie_goal=2200, protein_goal=150)
+        target = NutritionTarget(maintenance_calories=2200, protein_goal=150)
         db.session.add(target)
         db.session.commit()
     return target
@@ -40,6 +42,19 @@ def parse_date(value, fallback=None):
         return fallback
 
 
+def sync_todo_completion(todo):
+    """If a todo has steps, mark it done when all steps are done."""
+    if not todo.steps:
+        return
+    all_done = all(s.done for s in todo.steps)
+    if all_done and not todo.done:
+        todo.done = True
+        todo.completed_at = datetime.utcnow()
+    elif not all_done and todo.done:
+        todo.done = False
+        todo.completed_at = None
+
+
 # ── TODOS ──────────────────────────────────────────────────────────────────────
 
 @dashboard_bp.route("/api/todos", methods=["GET"])
@@ -48,7 +63,6 @@ def list_todos():
     q = Todo.query
     if not include_done:
         q = q.filter_by(done=False)
-    # Sort: importance desc, then effort asc (quick wins among important), then due
     todos = q.order_by(Todo.done.asc(), Todo.importance.desc(), Todo.effort.asc(), Todo.id.desc()).all()
     return jsonify([t.to_dict() for t in todos])
 
@@ -67,6 +81,11 @@ def create_todo():
         due_date=parse_date(data.get("due_date")),
     )
     db.session.add(todo)
+    db.session.flush()
+    for i, step_title in enumerate(data.get("steps") or []):
+        st = (step_title or "").strip()
+        if st:
+            db.session.add(TodoStep(todo_id=todo.id, title=st, position=i))
     db.session.commit()
     return jsonify(todo.to_dict()), 201
 
@@ -91,6 +110,15 @@ def update_todo(todo_id):
     if "done" in data:
         todo.done = bool(data["done"])
         todo.completed_at = datetime.utcnow() if todo.done else None
+        if todo.done:
+            for step in todo.steps:
+                step.done = True
+                if not step.completed_at:
+                    step.completed_at = datetime.utcnow()
+        else:
+            for step in todo.steps:
+                step.done = False
+                step.completed_at = None
     db.session.commit()
     return jsonify(todo.to_dict())
 
@@ -100,6 +128,15 @@ def toggle_todo(todo_id):
     todo = Todo.query.get_or_404(todo_id)
     todo.done = not todo.done
     todo.completed_at = datetime.utcnow() if todo.done else None
+    if todo.done:
+        for step in todo.steps:
+            step.done = True
+            if not step.completed_at:
+                step.completed_at = datetime.utcnow()
+    else:
+        for step in todo.steps:
+            step.done = False
+            step.completed_at = None
     db.session.commit()
     return jsonify(todo.to_dict())
 
@@ -110,6 +147,45 @@ def delete_todo(todo_id):
     db.session.delete(todo)
     db.session.commit()
     return jsonify({"ok": True})
+
+
+@dashboard_bp.route("/api/todos/<int:todo_id>/steps", methods=["POST"])
+def create_todo_step(todo_id):
+    todo = Todo.query.get_or_404(todo_id)
+    data = request.get_json() or {}
+    title = (data.get("title") or "").strip()
+    if not title:
+        return jsonify({"error": "Title is required"}), 400
+    max_pos = db.session.query(db.func.max(TodoStep.position)).filter_by(todo_id=todo.id).scalar() or 0
+    step = TodoStep(todo_id=todo.id, title=title, position=max_pos + 1)
+    db.session.add(step)
+    # Opening a new step un-completes the parent
+    if todo.done:
+        todo.done = False
+        todo.completed_at = None
+    db.session.commit()
+    return jsonify(todo.to_dict()), 201
+
+
+@dashboard_bp.route("/api/todo-steps/<int:step_id>/toggle", methods=["POST"])
+def toggle_todo_step(step_id):
+    step = TodoStep.query.get_or_404(step_id)
+    step.done = not step.done
+    step.completed_at = datetime.utcnow() if step.done else None
+    sync_todo_completion(step.todo)
+    db.session.commit()
+    return jsonify(step.todo.to_dict())
+
+
+@dashboard_bp.route("/api/todo-steps/<int:step_id>", methods=["DELETE"])
+def delete_todo_step(step_id):
+    step = TodoStep.query.get_or_404(step_id)
+    todo = step.todo
+    db.session.delete(step)
+    db.session.flush()
+    sync_todo_completion(todo)
+    db.session.commit()
+    return jsonify(todo.to_dict())
 
 
 # ── NUTRITION ──────────────────────────────────────────────────────────────────
@@ -123,8 +199,11 @@ def get_nutrition_targets():
 def update_nutrition_targets():
     data = request.get_json() or {}
     target = get_or_create_nutrition_target()
-    if "calorie_goal" in data:
-        target.calorie_goal = max(0, int(data["calorie_goal"]))
+    # Accept maintenance_calories; also accept legacy calorie_goal key
+    if "maintenance_calories" in data:
+        target.maintenance_calories = max(0, int(data["maintenance_calories"]))
+    elif "calorie_goal" in data:
+        target.maintenance_calories = max(0, int(data["calorie_goal"]))
     if "protein_goal" in data:
         target.protein_goal = max(0, int(data["protein_goal"]))
     db.session.commit()
@@ -141,11 +220,83 @@ def nutrition_today():
                .all())
     calories = sum(e.calories for e in entries)
     protein = sum(e.protein for e in entries)
+    deficit = target.maintenance_calories - calories  # positive = deficit
     return jsonify({
         "date": today.isoformat(),
         "targets": target.to_dict(),
         "totals": {"calories": calories, "protein": protein},
+        "deficit": deficit,  # + deficit, − surplus
         "entries": [e.to_dict() for e in entries],
+    })
+
+
+@dashboard_bp.route("/api/nutrition/week", methods=["GET"])
+def nutrition_week():
+    """Weekly calorie deficit/surplus + protein days within 15% of goal."""
+    today = date.today()
+    week_start = today - timedelta(days=today.weekday())
+    week_end = week_start + timedelta(days=6)
+    target = get_or_create_nutrition_target()
+    entries = (NutritionEntry.query
+               .filter(NutritionEntry.log_date >= week_start,
+                       NutritionEntry.log_date <= week_end)
+               .all())
+
+    by_day = {}
+    for e in entries:
+        bucket = by_day.setdefault(e.log_date, {"calories": 0, "protein": 0})
+        bucket["calories"] += e.calories
+        bucket["protein"] += e.protein
+
+    days = []
+    protein_hit_days = 0
+    days_with_food = 0
+    total_deficit = 0
+
+    for i in range(7):
+        d = week_start + timedelta(days=i)
+        if d > today:
+            break
+        totals = by_day.get(d)
+        if not totals:
+            days.append({
+                "date": d.isoformat(),
+                "calories": 0,
+                "protein": 0,
+                "deficit": None,
+                "protein_within_15": False,
+                "logged": False,
+            })
+            continue
+        days_with_food += 1
+        deficit = target.maintenance_calories - totals["calories"]
+        total_deficit += deficit
+        within = False
+        if target.protein_goal > 0:
+            lo = target.protein_goal * (1 - PROTEIN_TOLERANCE)
+            hi = target.protein_goal * (1 + PROTEIN_TOLERANCE)
+            within = lo <= totals["protein"] <= hi
+            if within:
+                protein_hit_days += 1
+        days.append({
+            "date": d.isoformat(),
+            "calories": totals["calories"],
+            "protein": totals["protein"],
+            "deficit": deficit,
+            "protein_within_15": within,
+            "logged": True,
+        })
+
+    return jsonify({
+        "week_start": week_start.isoformat(),
+        "week_end": week_end.isoformat(),
+        "targets": target.to_dict(),
+        "total_deficit": total_deficit,  # sum of (maintenance − intake) on logged days
+        "avg_deficit": round(total_deficit / days_with_food) if days_with_food else 0,
+        "days_logged": days_with_food,
+        "protein_hit_days": protein_hit_days,
+        "protein_tolerance_pct": int(PROTEIN_TOLERANCE * 100),
+        "days": days,
     })
 
 
@@ -176,7 +327,7 @@ def delete_nutrition_entry(entry_id):
 
 # ── WORKOUTS ───────────────────────────────────────────────────────────────────
 
-VALID_WORKOUT_KINDS = ("zone2", "lifting")
+VALID_WORKOUT_KINDS = ("zone2", "full", "upper", "lower")
 
 
 @dashboard_bp.route("/api/workouts", methods=["GET"])
@@ -192,27 +343,36 @@ def list_workouts():
 
 @dashboard_bp.route("/api/workouts/overview", methods=["GET"])
 def workouts_overview():
-    """Week strip: zone2 vs lifting counts and minutes for current week + today."""
+    """Week: upper/lower counts (full counts for both) + overall Zone 2."""
     today = date.today()
-    week_start = today - timedelta(days=today.weekday())  # Monday
+    week_start = today - timedelta(days=today.weekday())
     week_end = week_start + timedelta(days=6)
     workouts = (Workout.query
                 .filter(Workout.log_date >= week_start, Workout.log_date <= week_end)
                 .all())
 
-    def summarize(kind):
-        items = [w for w in workouts if w.kind == kind]
-        return {
-            "count": len(items),
-            "minutes": sum(w.duration_minutes or 0 for w in items),
-            "today": any(w.log_date == today for w in items),
-        }
+    zone2 = [w for w in workouts if w.kind == "zone2"]
+    upper_count = sum(1 for w in workouts if w.kind in ("upper", "full"))
+    lower_count = sum(1 for w in workouts if w.kind in ("lower", "full"))
+    full_count = sum(1 for w in workouts if w.kind == "full")
 
     return jsonify({
         "week_start": week_start.isoformat(),
         "week_end": week_end.isoformat(),
-        "zone2": summarize("zone2"),
-        "lifting": summarize("lifting"),
+        "upper": {
+            "count": upper_count,
+            "today": any(w.log_date == today and w.kind in ("upper", "full") for w in workouts),
+        },
+        "lower": {
+            "count": lower_count,
+            "today": any(w.log_date == today and w.kind in ("lower", "full") for w in workouts),
+        },
+        "full": {"count": full_count},
+        "zone2": {
+            "count": len(zone2),
+            "minutes": sum(w.duration_minutes or 0 for w in zone2),
+            "today": any(w.log_date == today for w in zone2),
+        },
         "workouts": [w.to_dict() for w in sorted(workouts, key=lambda w: (w.log_date, w.id), reverse=True)],
     })
 
@@ -222,7 +382,7 @@ def create_workout():
     data = request.get_json() or {}
     kind = data.get("kind")
     if kind not in VALID_WORKOUT_KINDS:
-        return jsonify({"error": "kind must be zone2 or lifting"}), 400
+        return jsonify({"error": "kind must be zone2, full, upper, or lower"}), 400
     duration = data.get("duration_minutes")
     workout = Workout(
         log_date=parse_date(data.get("log_date"), date.today()),
@@ -361,11 +521,11 @@ def delete_reminder(reminder_id):
 
 @dashboard_bp.route("/api/reminders/seed", methods=["POST"])
 def seed_reminders():
-    """Create sensible defaults if none exist."""
     if Reminder.query.count() > 0:
         return jsonify([r.to_dict() for r in Reminder.query.order_by(Reminder.time_of_day).all()])
     defaults = [
         Reminder(label="Morning routine", kind="morning", time_of_day="07:30", enabled=True),
+        Reminder(label="Daily checklist", kind="daily", time_of_day="12:00", enabled=True),
         Reminder(label="Log protein & calories", kind="nutrition", time_of_day="13:00", enabled=True),
         Reminder(label="Workout check-in", kind="workout", time_of_day="17:00", enabled=True),
         Reminder(label="Evening routine", kind="evening", time_of_day="21:00", enabled=True),

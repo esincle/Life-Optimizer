@@ -8,7 +8,7 @@ class RoutineStep(db.Model):
     __tablename__ = "routine_steps"
 
     id               = db.Column(db.Integer, primary_key=True)
-    routine          = db.Column(db.String(10), nullable=False)  # "morning" | "evening"
+    routine          = db.Column(db.String(10), nullable=False)  # "morning" | "evening" | "daily"
     title            = db.Column(db.String(200), nullable=False)
     description      = db.Column(db.Text, nullable=True)
     duration_minutes = db.Column(db.Integer, nullable=True)
@@ -165,8 +165,15 @@ class Todo(db.Model):
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime, nullable=True)
 
-    def to_dict(self):
-        return {
+    steps = db.relationship(
+        "TodoStep",
+        back_populates="todo",
+        cascade="all, delete-orphan",
+        order_by="TodoStep.position",
+    )
+
+    def to_dict(self, include_steps=True):
+        data = {
             "id": self.id,
             "title": self.title,
             "notes": self.notes,
@@ -176,24 +183,55 @@ class Todo(db.Model):
             "due_date": self.due_date.isoformat() if self.due_date else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "steps_done": sum(1 for s in self.steps if s.done),
+            "steps_total": len(self.steps),
+        }
+        if include_steps:
+            data["steps"] = [s.to_dict() for s in self.steps]
+        return data
+
+
+class TodoStep(db.Model):
+    """Checklist steps under a big todo (e.g. Tax return → print forms)."""
+    __tablename__ = "todo_steps"
+
+    id           = db.Column(db.Integer, primary_key=True)
+    todo_id      = db.Column(db.Integer, db.ForeignKey("todos.id"), nullable=False, index=True)
+    title        = db.Column(db.String(300), nullable=False)
+    done         = db.Column(db.Boolean, default=False, nullable=False)
+    position     = db.Column(db.Integer, nullable=False, default=0)
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime, nullable=True)
+
+    todo = db.relationship("Todo", back_populates="steps")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "todo_id": self.todo_id,
+            "title": self.title,
+            "done": self.done,
+            "position": self.position,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
         }
 
 
 # ── NUTRITION ──────────────────────────────────────────────────────────────────
 
 class NutritionTarget(db.Model):
-    """Singleton-style row: daily calorie and protein goals (adjustable)."""
+    """Singleton: maintenance calories (for deficit/surplus) + daily protein goal."""
     __tablename__ = "nutrition_targets"
 
-    id            = db.Column(db.Integer, primary_key=True)
-    calorie_goal  = db.Column(db.Integer, nullable=False, default=2200)
-    protein_goal  = db.Column(db.Integer, nullable=False, default=150)
-    updated_at    = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    id                   = db.Column(db.Integer, primary_key=True)
+    # Kept as calorie_goal in older DBs; migrate maps it → maintenance_calories usage
+    maintenance_calories = db.Column(db.Integer, nullable=False, default=2200)
+    protein_goal         = db.Column(db.Integer, nullable=False, default=150)
+    updated_at           = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self):
         return {
             "id": self.id,
-            "calorie_goal": self.calorie_goal,
+            "maintenance_calories": self.maintenance_calories,
             "protein_goal": self.protein_goal,
         }
 
@@ -226,7 +264,7 @@ class Workout(db.Model):
 
     id               = db.Column(db.Integer, primary_key=True)
     log_date         = db.Column(db.Date, nullable=False, index=True)
-    kind             = db.Column(db.String(20), nullable=False)  # "zone2" | "lifting"
+    kind             = db.Column(db.String(20), nullable=False)  # zone2 | full | upper | lower
     title            = db.Column(db.String(200), nullable=True)
     duration_minutes = db.Column(db.Integer, nullable=True)
     notes            = db.Column(db.Text, nullable=True)

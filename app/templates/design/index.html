@@ -12,25 +12,25 @@
     <div class="panel open" id="panel-nutrition">
         <div class="panel-header" onclick="togglePanel('panel-nutrition')">
             <div class="panel-title">
-                Calories &amp; protein goals
+                Calories &amp; protein
             </div>
             <span class="panel-chevron">▾</span>
         </div>
         <div class="panel-body">
             <p class="text-muted" style="margin-bottom:var(--space-md);font-size:var(--font-size-sm)">
-                Adjust daily targets used on the Today dashboard.
+                Maintenance calories are used to compute daily deficit/surplus (not a calorie “goal”). Protein goal is used for the weekly ±15% hit count.
             </p>
             <div class="form-grid-2">
                 <div class="field">
-                    <label for="design-cal-goal">Daily calorie goal</label>
-                    <input type="number" id="design-cal-goal" min="0" step="50">
+                    <label for="design-maintenance">Maintenance calories (TDEE)</label>
+                    <input type="number" id="design-maintenance" min="0" step="50">
                 </div>
                 <div class="field">
                     <label for="design-pro-goal">Daily protein goal (g)</label>
                     <input type="number" id="design-pro-goal" min="0" step="5">
                 </div>
             </div>
-            <button class="btn btn-primary btn-sm" type="button" onclick="saveNutritionGoals()">Save goals</button>
+            <button class="btn btn-primary btn-sm" type="button" onclick="saveNutritionGoals()">Save</button>
         </div>
     </div>
 
@@ -56,6 +56,7 @@
                         <option value="custom">Custom</option>
                         <option value="morning">Morning</option>
                         <option value="evening">Evening</option>
+                        <option value="daily">Daily</option>
                         <option value="nutrition">Nutrition</option>
                         <option value="workout">Workout</option>
                     </select>
@@ -70,7 +71,7 @@
     <div class="panel" id="panel-morning">
         <div class="panel-header" onclick="togglePanel('panel-morning')">
             <div class="panel-title">
-                <span class="icon-morning">☀️</span> Morning Routine
+                <span class="icon-morning">☀️</span> Morning Tracker
             </div>
             <span class="panel-chevron">▾</span>
         </div>
@@ -95,7 +96,7 @@
     <div class="panel" id="panel-evening">
         <div class="panel-header" onclick="togglePanel('panel-evening')">
             <div class="panel-title">
-                <span class="icon-evening">🌙</span> Evening Routine
+                <span class="icon-evening">🌙</span> Evening Tracker
             </div>
             <span class="panel-chevron">▾</span>
         </div>
@@ -111,6 +112,34 @@
                 </div>
                 <div style="margin-top:var(--space-sm)">
                     <input type="text" id="evening-desc" placeholder="Description (optional)">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Daily Tracker -->
+    <div class="panel" id="panel-daily">
+        <div class="panel-header" onclick="togglePanel('panel-daily')">
+            <div class="panel-title">
+                <span class="icon-daily">◎</span> Daily Tracker
+            </div>
+            <span class="panel-chevron">▾</span>
+        </div>
+        <div class="panel-body">
+            <p class="text-muted" style="margin-bottom:var(--space-md);font-size:var(--font-size-sm)">
+                All-day habits that aren’t morning or evening specific.
+            </p>
+            <ul class="routine-list" id="daily-list" data-routine="daily"></ul>
+            <button class="btn btn-secondary btn-sm" onclick="showAddStep('daily')">+ Add step</button>
+            <div class="add-form hidden" id="add-form-daily">
+                <div class="add-form-row">
+                    <input type="text" id="daily-title" placeholder="Step title">
+                    <input type="number" id="daily-duration" placeholder="Min" style="max-width:70px">
+                    <button class="btn btn-primary btn-sm" onclick="addStep('daily')">Add</button>
+                    <button class="btn btn-ghost btn-sm" onclick="hideAddStep('daily')">Cancel</button>
+                </div>
+                <div style="margin-top:var(--space-sm)">
+                    <input type="text" id="daily-desc" placeholder="Description (optional)">
                 </div>
             </div>
         </div>

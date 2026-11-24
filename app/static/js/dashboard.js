@@ -1,4 +1,4 @@
-// Today dashboard — todos, goals, nutrition, workouts
+// Today dashboard — nested todos, nutrition deficit/week, upper/lower/zone2
 
 document.addEventListener("DOMContentLoaded", async () => {
     const today = new Date();
@@ -8,7 +8,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     await Promise.all([loadTodos(), loadGoals(), loadNutrition(), loadWorkouts()]);
     initPushButton();
 
-    // Enter-to-submit on quick-add fields
     ["food-label", "food-cal", "food-pro"].forEach(id => {
         document.getElementById(id)?.addEventListener("keydown", e => {
             if (e.key === "Enter") { e.preventDefault(); addFood(); }
@@ -77,35 +76,63 @@ function dots(n, max = 5, filledClass = "dot-on") {
     return html;
 }
 
+function kindLabel(kind) {
+    return ({ zone2: "Zone 2", full: "Full", upper: "Upper", lower: "Lower" })[kind] || kind;
+}
+
 function todoItemHtml(t) {
+    const steps = t.steps || [];
+    const stepProgress = steps.length
+        ? `<span class="check-meta">${t.steps_done}/${t.steps_total} steps</span>`
+        : "";
+    const stepsHtml = steps.map(s => `
+        <li class="todo-step ${s.done ? "done" : ""}">
+            <div class="check-box ${s.done ? "checked" : ""}" onclick="toggleTodoStep(${s.id})">${s.done ? "✓" : ""}</div>
+            <span class="todo-step-title">${escHtml(s.title)}</span>
+            <button class="btn btn-danger btn-sm" type="button" onclick="deleteTodoStep(${s.id})" title="Remove step">✕</button>
+        </li>
+    `).join("");
+
     return `
-    <li class="check-item todo-item ${t.done ? "done" : ""}" id="todo-${t.id}">
-        <div class="check-box ${t.done ? "checked" : ""}" onclick="toggleTodo(${t.id})">${t.done ? "✓" : ""}</div>
-        <div class="todo-body">
-            <div class="check-label">${escHtml(t.title)}</div>
-            <div class="todo-metrics">
-                <span class="metric" title="Importance">
-                    <span class="metric-label">Imp</span>${dots(t.importance, 5, "dot-imp")}
-                </span>
-                <span class="metric" title="Effort">
-                    <span class="metric-label">Eff</span>${dots(t.effort, 5, "dot-eff")}
-                </span>
-                ${t.due_date ? `<span class="check-meta">Due ${escHtml(t.due_date)}</span>` : ""}
+    <li class="todo-block ${t.done ? "done" : ""}" id="todo-${t.id}">
+        <div class="todo-row">
+            <div class="check-box ${t.done ? "checked" : ""}" onclick="toggleTodo(${t.id})">${t.done ? "✓" : ""}</div>
+            <div class="todo-body">
+                <div class="check-label">${escHtml(t.title)}</div>
+                <div class="todo-metrics">
+                    <span class="metric" title="Importance">
+                        <span class="metric-label">Imp</span>${dots(t.importance, 5, "dot-imp")}
+                    </span>
+                    <span class="metric" title="Effort">
+                        <span class="metric-label">Eff</span>${dots(t.effort, 5, "dot-eff")}
+                    </span>
+                    ${stepProgress}
+                    ${t.due_date ? `<span class="check-meta">Due ${escHtml(t.due_date)}</span>` : ""}
+                </div>
             </div>
+            <button class="btn btn-danger btn-sm" type="button" onclick="deleteTodo(${t.id})" title="Delete">✕</button>
         </div>
-        <button class="btn btn-danger btn-sm" type="button" onclick="deleteTodo(${t.id})" title="Delete">✕</button>
+        <ul class="todo-steps">${stepsHtml}</ul>
+        <div class="todo-add-step">
+            <input type="text" id="step-input-${t.id}" placeholder="Add a step…" onkeydown="if(event.key==='Enter'){event.preventDefault();addTodoStep(${t.id})}">
+            <button class="btn btn-secondary btn-sm" type="button" onclick="addTodoStep(${t.id})">+ Step</button>
+        </div>
     </li>`;
 }
 
 async function addTodo() {
     const title = document.getElementById("todo-title").value.trim();
     if (!title) return showToast("Enter a task", "error");
+    const firstStep = document.getElementById("todo-first-step").value.trim();
     const importance = Number(document.getElementById("todo-importance").value);
     const effort = Number(document.getElementById("todo-effort").value);
     const due_date = document.getElementById("todo-due").value || null;
+    const payload = { title, importance, effort, due_date };
+    if (firstStep) payload.steps = [firstStep];
     try {
-        await api.post("/today/api/todos", { title, importance, effort, due_date });
+        await api.post("/today/api/todos", payload);
         document.getElementById("todo-title").value = "";
+        document.getElementById("todo-first-step").value = "";
         document.getElementById("todo-due").value = "";
         document.getElementById("todo-importance").value = 3;
         document.getElementById("todo-effort").value = 3;
@@ -131,6 +158,36 @@ async function toggleTodo(id) {
 async function deleteTodo(id) {
     try {
         await api.delete(`/today/api/todos/${id}`);
+        await loadTodos();
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+async function addTodoStep(todoId) {
+    const input = document.getElementById(`step-input-${todoId}`);
+    const title = (input?.value || "").trim();
+    if (!title) return showToast("Enter a step", "error");
+    try {
+        await api.post(`/today/api/todos/${todoId}/steps`, { title });
+        await loadTodos();
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+async function toggleTodoStep(stepId) {
+    try {
+        await api.post(`/today/api/todo-steps/${stepId}/toggle`, {});
+        await loadTodos();
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+async function deleteTodoStep(stepId) {
+    try {
+        await api.delete(`/today/api/todo-steps/${stepId}`);
         await loadTodos();
     } catch (e) {
         showToast(e.message, "error");
@@ -210,15 +267,38 @@ async function deleteGoal(id) {
 
 // ── NUTRITION ─────────────────────────────────────────────────────────────────
 
+function formatDeficit(n) {
+    if (n > 0) return `${n} kcal deficit`;
+    if (n < 0) return `${Math.abs(n)} kcal surplus`;
+    return "At maintenance";
+}
+
 async function loadNutrition() {
-    const data = await api.get("/today/api/nutrition/today");
-    const { targets, totals, entries } = data;
-    const calPct = targets.calorie_goal ? Math.min(100, Math.round(totals.calories / targets.calorie_goal * 100)) : 0;
-    const proPct = targets.protein_goal ? Math.min(100, Math.round(totals.protein / targets.protein_goal * 100)) : 0;
-    document.getElementById("cal-label").textContent = `${totals.calories} / ${targets.calorie_goal}`;
+    const [today, week] = await Promise.all([
+        api.get("/today/api/nutrition/today"),
+        api.get("/today/api/nutrition/week"),
+    ]);
+    const { targets, totals, deficit, entries } = today;
+    const proPct = targets.protein_goal
+        ? Math.min(100, Math.round(totals.protein / targets.protein_goal * 100))
+        : 0;
+
+    document.getElementById("cal-label").textContent = `${totals.calories} kcal`;
+    document.getElementById("deficit-line").textContent =
+        `${formatDeficit(deficit)} · maintenance ${targets.maintenance_calories}`;
+    document.getElementById("deficit-line").className =
+        `deficit-line ${deficit > 0 ? "is-deficit" : deficit < 0 ? "is-surplus" : ""}`;
+
     document.getElementById("pro-label").textContent = `${totals.protein} / ${targets.protein_goal} g`;
-    document.getElementById("cal-bar").style.width = `${calPct}%`;
     document.getElementById("pro-bar").style.width = `${proPct}%`;
+
+    document.getElementById("week-deficit").textContent = formatDeficit(week.total_deficit).replace(" kcal", "");
+    document.getElementById("week-deficit-meta").textContent =
+        week.days_logged
+            ? `${week.days_logged} logged day${week.days_logged === 1 ? "" : "s"} · avg ${formatDeficit(week.avg_deficit)}`
+            : "No food logged this week";
+    document.getElementById("week-protein-hits").textContent =
+        `${week.protein_hit_days}/${week.days_logged || 0}`;
 
     const list = document.getElementById("food-list");
     list.innerHTML = entries.length
@@ -262,12 +342,15 @@ async function deleteFood(id) {
 
 async function loadWorkouts() {
     const data = await api.get("/today/api/workouts/overview");
+    document.getElementById("upper-stat").textContent = data.upper.count;
+    document.getElementById("upper-meta").textContent =
+        `incl. full${data.upper.today ? " · today ✓" : ""}`;
+    document.getElementById("lower-stat").textContent = data.lower.count;
+    document.getElementById("lower-meta").textContent =
+        `incl. full${data.lower.today ? " · today ✓" : ""}`;
     document.getElementById("zone2-stat").textContent = data.zone2.count;
     document.getElementById("zone2-meta").textContent =
         `${data.zone2.minutes} min${data.zone2.today ? " · today ✓" : ""}`;
-    document.getElementById("lifting-stat").textContent = data.lifting.count;
-    document.getElementById("lifting-meta").textContent =
-        `${data.lifting.minutes} min${data.lifting.today ? " · today ✓" : ""}`;
 
     const list = document.getElementById("workout-list");
     list.innerHTML = data.workouts.length
@@ -275,7 +358,7 @@ async function loadWorkouts() {
             <li class="entry-list-item food-row">
                 <div>
                     <div class="entry-list-snippet">
-                        <span class="kind-badge kind-${w.kind}">${w.kind === "zone2" ? "Zone 2" : "Lifting"}</span>
+                        <span class="kind-badge kind-${w.kind}">${kindLabel(w.kind)}</span>
                         ${escHtml(w.title || "Session")}
                     </div>
                     <div class="entry-list-date">${escHtml(w.log_date)}${w.duration_minutes ? ` · ${w.duration_minutes} min` : ""}</div>

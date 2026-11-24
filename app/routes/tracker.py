@@ -98,18 +98,22 @@ def get_history():
         has_journal = False
         morning_pct = 0
         evening_pct = 0
+        daily_pct = 0
 
         if log:
             morning = [c for c in log.completions if c.step.routine == "morning"]
             evening = [c for c in log.completions if c.step.routine == "evening"]
+            daily = [c for c in log.completions if c.step.routine == "daily"]
             morning_pct = (sum(1 for c in morning if c.completed) / len(morning) * 100) if morning else 0
             evening_pct = (sum(1 for c in evening if c.completed) / len(evening) * 100) if evening else 0
+            daily_pct = (sum(1 for c in daily if c.completed) / len(daily) * 100) if daily else 0
             has_journal = any(e.entry_type == "evening" for e in log.journal_entries)
 
         result.append({
             "date": d.isoformat(),
             "morning_pct": round(morning_pct),
             "evening_pct": round(evening_pct),
+            "daily_pct": round(daily_pct),
             "has_journal": has_journal,
         })
 

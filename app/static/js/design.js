@@ -5,21 +5,21 @@ document.addEventListener("DOMContentLoaded", () => {
     loadReminders();
     loadRoutine("morning");
     loadRoutine("evening");
+    loadRoutine("daily");
     loadTechniques();
     loadPrompts("gratitude");
     loadPrompts("evening");
-    // Open nutrition panel if linked with hash
     if (location.hash === "#panel-nutrition") {
         document.getElementById("panel-nutrition")?.classList.add("open");
     }
 });
 
-// ── NUTRITION GOALS ───────────────────────────────────────────────────────────
+// ── NUTRITION ─────────────────────────────────────────────────────────────────
 
 async function loadNutritionGoals() {
     try {
         const t = await api.get("/today/api/nutrition/targets");
-        document.getElementById("design-cal-goal").value = t.calorie_goal;
+        document.getElementById("design-maintenance").value = t.maintenance_calories;
         document.getElementById("design-pro-goal").value = t.protein_goal;
     } catch (e) {
         showToast(e.message, "error");
@@ -27,11 +27,11 @@ async function loadNutritionGoals() {
 }
 
 async function saveNutritionGoals() {
-    const calorie_goal = Number(document.getElementById("design-cal-goal").value);
+    const maintenance_calories = Number(document.getElementById("design-maintenance").value);
     const protein_goal = Number(document.getElementById("design-pro-goal").value);
     try {
-        await api.put("/today/api/nutrition/targets", { calorie_goal, protein_goal });
-        showToast("Nutrition goals saved", "success");
+        await api.put("/today/api/nutrition/targets", { maintenance_calories, protein_goal });
+        showToast("Nutrition settings saved", "success");
     } catch (e) {
         showToast(e.message, "error");
     }
@@ -202,7 +202,7 @@ function startEditStep(id, title, desc, dur) {
 
 // Helper: find routine type from the list element's data attribute
 function findRoutineForStep(stepId) {
-    const lists = ["morning", "evening"];
+    const lists = ["morning", "evening", "daily"];
     for (const r of lists) {
         const list = document.getElementById(`${r}-list`);
         if (list && list.querySelector(`[data-id="${stepId}"]`)) return r;
@@ -217,9 +217,9 @@ async function saveEditStep(id) {
     const dur = parseInt(document.getElementById(`edit-dur-${id}`).value) || null;
     try {
         await api.put(`/design/api/routine/step/${id}`, { title, description: desc, duration_minutes: dur });
-        // Reload both routines since we don't know which
         loadRoutine("morning");
         loadRoutine("evening");
+        loadRoutine("daily");
         showToast("Saved", "success");
     } catch (e) {
         showToast(e.message, "error");

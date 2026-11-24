@@ -12,9 +12,12 @@ def index():
 
 # ── ROUTINE STEPS ──────────────────────────────────────────────────────────────
 
+VALID_ROUTINES = ("morning", "evening", "daily")
+
+
 @design_bp.route("/api/routine/<routine_type>", methods=["GET"])
 def get_routine(routine_type):
-    if routine_type not in ("morning", "evening"):
+    if routine_type not in VALID_ROUTINES:
         return jsonify({"error": "Invalid routine type"}), 400
     steps = (RoutineStep.query
              .filter_by(routine=routine_type, is_active=True)
@@ -25,7 +28,7 @@ def get_routine(routine_type):
 
 @design_bp.route("/api/routine/<routine_type>/step", methods=["POST"])
 def create_step(routine_type):
-    if routine_type not in ("morning", "evening"):
+    if routine_type not in VALID_ROUTINES:
         return jsonify({"error": "Invalid routine type"}), 400
     data = request.get_json()
     max_pos = db.session.query(db.func.max(RoutineStep.position)).filter_by(routine=routine_type).scalar() or 0

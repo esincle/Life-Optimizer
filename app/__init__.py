@@ -26,5 +26,7 @@ def create_app(config=DevelopmentConfig):
     # Blueprints import models; create_all registers every table they define
     with app.app_context():
         db.create_all()
+        from app.migrate import migrate_schema
+        migrate_schema()
 
     return app

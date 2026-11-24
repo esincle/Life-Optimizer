@@ -148,6 +148,7 @@
 
 .icon-morning { color: var(--color-morning); }
 .icon-evening { color: var(--color-evening); }
+.icon-daily { color: #3a90d0; }
 .icon-journal { color: #e8855e; }
 .icon-technique { color: #3a90d0; }
 
