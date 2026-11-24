@@ -62,13 +62,30 @@ def sync_todo_completion(todo):
 
 # ── TODOS ──────────────────────────────────────────────────────────────────────
 
+VALID_TODO_BUCKETS = ("today", "overall", "idea")
+
+
 @dashboard_bp.route("/api/todos", methods=["GET"])
 def list_todos():
     include_done = request.args.get("include_done", "0") == "1"
-    q = Todo.query
+    bucket = request.args.get("bucket", "overall")
+    if bucket not in VALID_TODO_BUCKETS:
+        return jsonify({"error": "bucket must be today, overall, or idea"}), 400
+
+    q = Todo.query.filter_by(bucket=bucket)
     if not include_done:
         q = q.filter_by(done=False)
-    todos = q.order_by(Todo.done.asc(), Todo.importance.desc(), Todo.effort.asc(), Todo.id.desc()).all()
+
+    if bucket == "today":
+        day = parse_date(request.args.get("date"), date.today())
+        q = q.filter(Todo.for_date == day)
+
+    if bucket == "idea":
+        todos = q.order_by(Todo.id.desc()).all()
+    else:
+        todos = q.order_by(
+            Todo.done.asc(), Todo.importance.desc(), Todo.effort.asc(), Todo.id.desc()
+        ).all()
     return jsonify([t.to_dict() for t in todos])
 
 
@@ -78,19 +95,36 @@ def create_todo():
     title = (data.get("title") or "").strip()
     if not title:
         return jsonify({"error": "Title is required"}), 400
+    bucket = (data.get("bucket") or "overall").strip()
+    if bucket not in VALID_TODO_BUCKETS:
+        return jsonify({"error": "bucket must be today, overall, or idea"}), 400
+
+    for_date = parse_date(data.get("for_date"))
+    if bucket == "today":
+        for_date = for_date or date.today()
+    else:
+        for_date = None
+
+    # Ideas stay light — default mid importance/effort unless provided
+    default_imp = 3 if bucket != "idea" else 2
+    default_eff = 3 if bucket != "idea" else 1
+
     todo = Todo(
         title=title,
         notes=data.get("notes"),
-        importance=_clamp(data.get("importance", 3), 1, 5),
-        effort=_clamp(data.get("effort", 3), 1, 5),
+        importance=_clamp(data.get("importance", default_imp), 1, 5),
+        effort=_clamp(data.get("effort", default_eff), 1, 5),
         due_date=parse_date(data.get("due_date")),
+        bucket=bucket,
+        for_date=for_date,
     )
     db.session.add(todo)
     db.session.flush()
-    for i, step_title in enumerate(data.get("steps") or []):
-        st = (step_title or "").strip()
-        if st:
-            db.session.add(TodoStep(todo_id=todo.id, title=st, position=i))
+    if bucket != "idea":
+        for i, step_title in enumerate(data.get("steps") or []):
+            st = (step_title or "").strip()
+            if st:
+                db.session.add(TodoStep(todo_id=todo.id, title=st, position=i))
     db.session.commit()
     return jsonify(todo.to_dict()), 201
 
@@ -112,6 +146,17 @@ def update_todo(todo_id):
         todo.effort = _clamp(data["effort"], 1, 5)
     if "due_date" in data:
         todo.due_date = parse_date(data["due_date"])
+    if "bucket" in data:
+        bucket = (data["bucket"] or "").strip()
+        if bucket not in VALID_TODO_BUCKETS:
+            return jsonify({"error": "Invalid bucket"}), 400
+        todo.bucket = bucket
+        if bucket == "today":
+            todo.for_date = parse_date(data.get("for_date"), todo.for_date or date.today())
+        else:
+            todo.for_date = None
+    elif "for_date" in data and todo.bucket == "today":
+        todo.for_date = parse_date(data["for_date"], date.today())
     if "done" in data:
         todo.done = bool(data["done"])
         todo.completed_at = datetime.utcnow() if todo.done else None

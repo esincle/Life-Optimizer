@@ -16,70 +16,90 @@
     </div>
 
     <div class="today-grid">
-        <!-- Todos -->
-        <section class="card today-section" id="section-todos">
-            <div class="card-header">
-                <h3 class="card-title">To-dos</h3>
-                <button class="btn btn-secondary btn-sm" type="button" onclick="toggleTodoForm()">+ Add</button>
+        <!-- Planning: To-do / Goals -->
+        <section class="card today-section full-span" id="section-planning">
+            <div class="tabs planning-tabs" id="main-planning-tabs">
+                <button class="tab-btn active" type="button" data-main-tab="todo" onclick="switchMainTab('todo', this)">To-do</button>
+                <button class="tab-btn" type="button" data-main-tab="goals" onclick="switchMainTab('goals', this)">Goals</button>
             </div>
-            <div class="add-form hidden" id="todo-form">
-                <div class="field">
-                    <label for="todo-title">Big todo</label>
-                    <input type="text" id="todo-title" placeholder="e.g. Tax return">
-                </div>
-                <div class="field">
-                    <label for="todo-first-step">First step (optional)</label>
-                    <input type="text" id="todo-first-step" placeholder="e.g. Print tax return">
-                </div>
-                <div class="form-grid-2">
-                    <div class="field">
-                        <label for="todo-importance">Importance <span id="todo-imp-val">3</span>/5</label>
-                        <input type="range" id="todo-importance" min="1" max="5" value="3" oninput="document.getElementById('todo-imp-val').textContent=this.value">
-                    </div>
-                    <div class="field">
-                        <label for="todo-effort">Effort <span id="todo-eff-val">3</span>/5</label>
-                        <input type="range" id="todo-effort" min="1" max="5" value="3" oninput="document.getElementById('todo-eff-val').textContent=this.value">
-                    </div>
-                </div>
-                <div class="field">
-                    <label for="todo-due">Due (optional)</label>
-                    <input type="date" id="todo-due">
-                </div>
-                <div class="flex gap-sm">
-                    <button class="btn btn-primary btn-sm" type="button" onclick="addTodo()">Add todo</button>
-                    <button class="btn btn-ghost btn-sm" type="button" onclick="toggleTodoForm(false)">Cancel</button>
-                </div>
-            </div>
-            <ul class="todo-tree" id="todo-list"></ul>
-            <p class="empty-hint text-muted hidden" id="todo-empty">No open todos — add one above.</p>
-        </section>
 
-        <!-- Near-term goals -->
-        <section class="card today-section" id="section-goals">
-            <div class="card-header">
-                <h3 class="card-title">Near-term goals</h3>
-                <button class="btn btn-secondary btn-sm" type="button" onclick="toggleGoalForm()">+ Add</button>
+            <!-- TO-DO TAB -->
+            <div id="main-tab-todo" class="tab-pane active">
+                <div class="bucket-chips" id="todo-bucket-chips">
+                    <button class="chip active" type="button" data-bucket="today" onclick="switchTodoBucket('today', this)">Today</button>
+                    <button class="chip" type="button" data-bucket="overall" onclick="switchTodoBucket('overall', this)">Overall</button>
+                    <button class="chip" type="button" data-bucket="idea" onclick="switchTodoBucket('idea', this)">Ideas</button>
+                </div>
+                <p class="bucket-hint text-muted" id="bucket-hint">Tasks for today only — tick them off as you go.</p>
+
+                <div class="card-header" style="margin-top:var(--space-md)">
+                    <h3 class="card-title" id="todo-bucket-title">Today’s to-dos</h3>
+                    <button class="btn btn-secondary btn-sm" type="button" onclick="toggleTodoForm()">+ Add</button>
+                </div>
+
+                <div class="add-form hidden" id="todo-form">
+                    <div class="field">
+                        <label for="todo-title" id="todo-title-label">Task</label>
+                        <input type="text" id="todo-title" placeholder="What needs doing today?">
+                    </div>
+                    <div class="field" id="todo-step-field">
+                        <label for="todo-first-step">First step (optional)</label>
+                        <input type="text" id="todo-first-step" placeholder="e.g. Print tax return">
+                    </div>
+                    <div class="field hidden" id="todo-notes-field">
+                        <label for="todo-notes">Notes (optional)</label>
+                        <input type="text" id="todo-notes" placeholder="Capture the idea…">
+                    </div>
+                    <div class="form-grid-2" id="todo-metrics-fields">
+                        <div class="field">
+                            <label for="todo-importance">Importance <span id="todo-imp-val">3</span>/5</label>
+                            <input type="range" id="todo-importance" min="1" max="5" value="3" oninput="document.getElementById('todo-imp-val').textContent=this.value">
+                        </div>
+                        <div class="field">
+                            <label for="todo-effort">Effort <span id="todo-eff-val">3</span>/5</label>
+                            <input type="range" id="todo-effort" min="1" max="5" value="3" oninput="document.getElementById('todo-eff-val').textContent=this.value">
+                        </div>
+                    </div>
+                    <div class="field" id="todo-due-field">
+                        <label for="todo-due">Due (optional)</label>
+                        <input type="date" id="todo-due">
+                    </div>
+                    <div class="flex gap-sm">
+                        <button class="btn btn-primary btn-sm" type="button" id="todo-add-btn" onclick="addTodo()">Add</button>
+                        <button class="btn btn-ghost btn-sm" type="button" onclick="toggleTodoForm(false)">Cancel</button>
+                    </div>
+                </div>
+                <ul class="todo-tree" id="todo-list"></ul>
+                <p class="empty-hint text-muted hidden" id="todo-empty">Nothing here yet — add one above.</p>
             </div>
-            <div class="add-form hidden" id="goal-form">
-                <div class="field">
-                    <label for="goal-title">Goal</label>
-                    <input type="text" id="goal-title" placeholder="e.g. Consistent Zone 2 week">
+
+            <!-- GOALS TAB -->
+            <div id="main-tab-goals" class="tab-pane">
+                <div class="card-header">
+                    <h3 class="card-title">Near-term goals</h3>
+                    <button class="btn btn-secondary btn-sm" type="button" onclick="toggleGoalForm()">+ Add</button>
                 </div>
-                <div class="field">
-                    <label for="goal-desc">Notes</label>
-                    <input type="text" id="goal-desc" placeholder="Optional detail">
+                <div class="add-form hidden" id="goal-form">
+                    <div class="field">
+                        <label for="goal-title">Goal</label>
+                        <input type="text" id="goal-title" placeholder="e.g. Consistent Zone 2 week">
+                    </div>
+                    <div class="field">
+                        <label for="goal-desc">Notes</label>
+                        <input type="text" id="goal-desc" placeholder="Optional detail">
+                    </div>
+                    <div class="field">
+                        <label for="goal-target">Target date</label>
+                        <input type="date" id="goal-target">
+                    </div>
+                    <div class="flex gap-sm">
+                        <button class="btn btn-primary btn-sm" type="button" onclick="addGoal()">Add goal</button>
+                        <button class="btn btn-ghost btn-sm" type="button" onclick="toggleGoalForm(false)">Cancel</button>
+                    </div>
                 </div>
-                <div class="field">
-                    <label for="goal-target">Target date</label>
-                    <input type="date" id="goal-target">
-                </div>
-                <div class="flex gap-sm">
-                    <button class="btn btn-primary btn-sm" type="button" onclick="addGoal()">Add goal</button>
-                    <button class="btn btn-ghost btn-sm" type="button" onclick="toggleGoalForm(false)">Cancel</button>
-                </div>
+                <ul class="goal-list" id="goal-list"></ul>
+                <p class="empty-hint text-muted hidden" id="goal-empty">No active goals yet.</p>
             </div>
-            <ul class="goal-list" id="goal-list"></ul>
-            <p class="empty-hint text-muted hidden" id="goal-empty">No active goals yet.</p>
         </section>
 
         <!-- Nutrition -->

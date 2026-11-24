@@ -162,6 +162,9 @@ class Todo(db.Model):
     importance   = db.Column(db.Integer, nullable=False, default=3)  # 1–5
     effort       = db.Column(db.Integer, nullable=False, default=3)  # 1–5
     due_date     = db.Column(db.Date, nullable=True)
+    # today = day list · overall = longer backlog · idea = idea inbox
+    bucket       = db.Column(db.String(20), nullable=False, default="overall", index=True)
+    for_date     = db.Column(db.Date, nullable=True, index=True)  # used when bucket=today
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime, nullable=True)
 
@@ -181,6 +184,8 @@ class Todo(db.Model):
             "importance": self.importance,
             "effort": self.effort,
             "due_date": self.due_date.isoformat() if self.due_date else None,
+            "bucket": self.bucket,
+            "for_date": self.for_date.isoformat() if self.for_date else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "steps_done": sum(1 for s in self.steps if s.done),

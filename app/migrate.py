@@ -37,3 +37,15 @@ def migrate_schema():
             conn.execute(text(
                 "UPDATE workouts SET kind = 'full' WHERE kind = 'lifting'"
             ))
+
+    if "todos" in tables:
+        cols = {c["name"] for c in inspect(engine).get_columns("todos")}
+        with engine.begin() as conn:
+            if "bucket" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE todos ADD COLUMN bucket VARCHAR(20) NOT NULL DEFAULT 'overall'"
+                ))
+            if "for_date" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE todos ADD COLUMN for_date DATE"
+                ))

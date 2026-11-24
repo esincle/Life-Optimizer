@@ -1,10 +1,15 @@
 // Today dashboard — nested todos, nutrition deficit/week, upper/lower/zone2
 
+function localISODate(d = new Date()) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
     const today = new Date();
     document.getElementById("today-date").textContent =
         today.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
+    applyBucketFormMode();
     await Promise.all([loadTodos(), loadGoals(), loadNutrition(), loadSteps(), loadWorkouts()]);
     initPushButton();
 
@@ -49,22 +54,89 @@ function initPushButton() {
     });
 }
 
-// ── TODOS ─────────────────────────────────────────────────────────────────────
+// ── PLANNING TABS + TODO BUCKETS ──────────────────────────────────────────────
+
+let currentTodoBucket = "today";
+
+const BUCKET_COPY = {
+    today: {
+        title: "Today’s to-dos",
+        hint: "Tasks for today only — tick them off as you go.",
+        placeholder: "What needs doing today?",
+        addLabel: "Add today’s task",
+    },
+    overall: {
+        title: "Overall to-dos",
+        hint: "Longer-running tasks that aren’t just for today.",
+        placeholder: "e.g. Tax return",
+        addLabel: "Add overall todo",
+    },
+    idea: {
+        title: "Idea collection",
+        hint: "Capture ideas here. Move one to Today or Overall when you’re ready.",
+        placeholder: "Capture an idea…",
+        addLabel: "Add idea",
+    },
+};
+
+function switchMainTab(tab, btn) {
+    document.querySelectorAll("#main-planning-tabs .tab-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("main-tab-todo").classList.toggle("active", tab === "todo");
+    document.getElementById("main-tab-goals").classList.toggle("active", tab === "goals");
+    if (tab === "goals") loadGoals();
+}
+
+function switchTodoBucket(bucket, btn) {
+    currentTodoBucket = bucket;
+    document.querySelectorAll("#todo-bucket-chips .chip").forEach(c => c.classList.remove("active"));
+    btn.classList.add("active");
+    applyBucketFormMode();
+    toggleTodoForm(false);
+    loadTodos();
+}
+
+function applyBucketFormMode() {
+    const copy = BUCKET_COPY[currentTodoBucket];
+    document.getElementById("todo-bucket-title").textContent = copy.title;
+    document.getElementById("bucket-hint").textContent = copy.hint;
+    document.getElementById("todo-title").placeholder = copy.placeholder;
+    document.getElementById("todo-add-btn").textContent = copy.addLabel;
+
+    const isIdea = currentTodoBucket === "idea";
+    document.getElementById("todo-step-field").classList.toggle("hidden", isIdea);
+    document.getElementById("todo-notes-field").classList.toggle("hidden", !isIdea);
+    document.getElementById("todo-metrics-fields").classList.toggle("hidden", isIdea);
+    document.getElementById("todo-due-field").classList.toggle("hidden", isIdea);
+    document.getElementById("todo-title-label").textContent = isIdea ? "Idea" : "Task";
+}
 
 function toggleTodoForm(show) {
     const form = document.getElementById("todo-form");
     const open = show === undefined ? form.classList.contains("hidden") : show;
     form.classList.toggle("hidden", !open);
-    if (open) document.getElementById("todo-title").focus();
+    if (open) {
+        applyBucketFormMode();
+        document.getElementById("todo-title").focus();
+    }
 }
 
 async function loadTodos() {
-    const todos = await api.get("/today/api/todos");
+    let url = `/today/api/todos?bucket=${currentTodoBucket}`;
+    if (currentTodoBucket === "today") {
+        url += `&date=${localISODate()}`;
+    }
+    const todos = await api.get(url);
     const list = document.getElementById("todo-list");
     const empty = document.getElementById("todo-empty");
     if (!todos.length) {
         list.innerHTML = "";
         empty.classList.remove("hidden");
+        empty.textContent = currentTodoBucket === "idea"
+            ? "No ideas yet — capture one above."
+            : currentTodoBucket === "today"
+                ? "No tasks for today — add one above."
+                : "No overall todos — add one above.";
         return;
     }
     empty.classList.add("hidden");
@@ -83,12 +155,27 @@ function kindLabel(kind) {
     return ({ zone2: "Zone 2", full: "Full", upper: "Upper", lower: "Lower" })[kind] || kind;
 }
 
+function moveButtonsHtml(t) {
+    const moves = [];
+    if (t.bucket !== "today") {
+        moves.push(`<button class="btn btn-ghost btn-sm" type="button" onclick="moveTodo(${t.id},'today')">→ Today</button>`);
+    }
+    if (t.bucket !== "overall") {
+        moves.push(`<button class="btn btn-ghost btn-sm" type="button" onclick="moveTodo(${t.id},'overall')">→ Overall</button>`);
+    }
+    if (t.bucket !== "idea") {
+        moves.push(`<button class="btn btn-ghost btn-sm" type="button" onclick="moveTodo(${t.id},'idea')">→ Ideas</button>`);
+    }
+    return moves.length ? `<div class="todo-move-actions">${moves.join("")}</div>` : "";
+}
+
 function todoItemHtml(t) {
+    const isIdea = t.bucket === "idea";
     const steps = t.steps || [];
-    const stepProgress = steps.length
+    const stepProgress = !isIdea && steps.length
         ? `<span class="check-meta">${t.steps_done}/${t.steps_total} steps</span>`
         : "";
-    const stepsHtml = steps.map(s => `
+    const stepsHtml = isIdea ? "" : steps.map(s => `
         <li class="todo-step ${s.done ? "done" : ""}">
             <div class="check-box ${s.done ? "checked" : ""}" onclick="toggleTodoStep(${s.id})">${s.done ? "✓" : ""}</div>
             <span class="todo-step-title">${escHtml(s.title)}</span>
@@ -96,46 +183,65 @@ function todoItemHtml(t) {
         </li>
     `).join("");
 
+    const metrics = isIdea
+        ? (t.notes ? `<div class="check-meta">${escHtml(t.notes)}</div>` : "")
+        : `<div class="todo-metrics">
+                <span class="metric" title="Importance">
+                    <span class="metric-label">Imp</span>${dots(t.importance, 5, "dot-imp")}
+                </span>
+                <span class="metric" title="Effort">
+                    <span class="metric-label">Eff</span>${dots(t.effort, 5, "dot-eff")}
+                </span>
+                ${stepProgress}
+                ${t.due_date ? `<span class="check-meta">Due ${escHtml(t.due_date)}</span>` : ""}
+           </div>`;
+
+    const addStep = isIdea ? "" : `
+        <ul class="todo-steps">${stepsHtml}</ul>
+        <div class="todo-add-step">
+            <input type="text" id="step-input-${t.id}" placeholder="Add a step…" onkeydown="if(event.key==='Enter'){event.preventDefault();addTodoStep(${t.id})}">
+            <button class="btn btn-secondary btn-sm" type="button" onclick="addTodoStep(${t.id})">+ Step</button>
+        </div>`;
+
     return `
     <li class="todo-block ${t.done ? "done" : ""}" id="todo-${t.id}">
         <div class="todo-row">
             <div class="check-box ${t.done ? "checked" : ""}" onclick="toggleTodo(${t.id})">${t.done ? "✓" : ""}</div>
             <div class="todo-body">
                 <div class="check-label">${escHtml(t.title)}</div>
-                <div class="todo-metrics">
-                    <span class="metric" title="Importance">
-                        <span class="metric-label">Imp</span>${dots(t.importance, 5, "dot-imp")}
-                    </span>
-                    <span class="metric" title="Effort">
-                        <span class="metric-label">Eff</span>${dots(t.effort, 5, "dot-eff")}
-                    </span>
-                    ${stepProgress}
-                    ${t.due_date ? `<span class="check-meta">Due ${escHtml(t.due_date)}</span>` : ""}
-                </div>
+                ${metrics}
+                ${moveButtonsHtml(t)}
             </div>
             <button class="btn btn-danger btn-sm" type="button" onclick="deleteTodo(${t.id})" title="Delete">✕</button>
         </div>
-        <ul class="todo-steps">${stepsHtml}</ul>
-        <div class="todo-add-step">
-            <input type="text" id="step-input-${t.id}" placeholder="Add a step…" onkeydown="if(event.key==='Enter'){event.preventDefault();addTodoStep(${t.id})}">
-            <button class="btn btn-secondary btn-sm" type="button" onclick="addTodoStep(${t.id})">+ Step</button>
-        </div>
+        ${addStep}
     </li>`;
 }
 
 async function addTodo() {
     const title = document.getElementById("todo-title").value.trim();
-    if (!title) return showToast("Enter a task", "error");
-    const firstStep = document.getElementById("todo-first-step").value.trim();
-    const importance = Number(document.getElementById("todo-importance").value);
-    const effort = Number(document.getElementById("todo-effort").value);
-    const due_date = document.getElementById("todo-due").value || null;
-    const payload = { title, importance, effort, due_date };
-    if (firstStep) payload.steps = [firstStep];
+    if (!title) return showToast(currentTodoBucket === "idea" ? "Enter an idea" : "Enter a task", "error");
+
+    const payload = { title, bucket: currentTodoBucket };
+    if (currentTodoBucket === "idea") {
+        const notes = document.getElementById("todo-notes").value.trim();
+        if (notes) payload.notes = notes;
+    } else {
+        const firstStep = document.getElementById("todo-first-step").value.trim();
+        payload.importance = Number(document.getElementById("todo-importance").value);
+        payload.effort = Number(document.getElementById("todo-effort").value);
+        payload.due_date = document.getElementById("todo-due").value || null;
+        if (firstStep) payload.steps = [firstStep];
+        if (currentTodoBucket === "today") {
+            payload.for_date = localISODate();
+        }
+    }
+
     try {
         await api.post("/today/api/todos", payload);
         document.getElementById("todo-title").value = "";
         document.getElementById("todo-first-step").value = "";
+        document.getElementById("todo-notes").value = "";
         document.getElementById("todo-due").value = "";
         document.getElementById("todo-importance").value = 3;
         document.getElementById("todo-effort").value = 3;
@@ -143,7 +249,19 @@ async function addTodo() {
         document.getElementById("todo-eff-val").textContent = "3";
         toggleTodoForm(false);
         await loadTodos();
-        showToast("Todo added", "success");
+        showToast(currentTodoBucket === "idea" ? "Idea saved" : "Todo added", "success");
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+async function moveTodo(id, bucket) {
+    const body = { bucket };
+    if (bucket === "today") body.for_date = localISODate();
+    try {
+        await api.put(`/today/api/todos/${id}`, body);
+        await loadTodos();
+        showToast(`Moved to ${bucket === "idea" ? "Ideas" : bucket === "today" ? "Today" : "Overall"}`, "success");
     } catch (e) {
         showToast(e.message, "error");
     }
