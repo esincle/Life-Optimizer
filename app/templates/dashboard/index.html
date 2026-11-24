@@ -114,7 +114,8 @@
                         <span>Today’s intake</span>
                         <span id="cal-label">0 kcal</span>
                     </div>
-                    <div class="deficit-line" id="deficit-line">Deficit / surplus vs maintenance…</div>
+                    <div class="deficit-line" id="deficit-line">Deficit / surplus vs dynamic TDEE…</div>
+                    <div class="tdee-breakdown text-muted" id="tdee-breakdown">TDEE breakdown…</div>
                 </div>
                 <div class="macro-block">
                     <div class="progress-label">
@@ -130,7 +131,7 @@
                 <div class="week-stat">
                     <div class="week-stat-label">Week deficit</div>
                     <div class="week-stat-value" id="week-deficit">—</div>
-                    <div class="week-stat-meta" id="week-deficit-meta">vs maintenance</div>
+                    <div class="week-stat-meta" id="week-deficit-meta">vs dynamic TDEE</div>
                 </div>
                 <div class="week-stat">
                     <div class="week-stat-label">Protein ±15%</div>
@@ -216,6 +217,7 @@
                     </select>
                     <input type="text" id="workout-title" placeholder="Session name (optional)">
                     <input type="number" id="workout-mins" placeholder="Min" style="max-width:70px" min="1">
+                    <input type="number" id="workout-kcal" placeholder="kcal burned" style="max-width:110px" min="0">
                     <button class="btn btn-primary btn-sm" type="button" onclick="addWorkout()">Log</button>
                 </div>
             </div>

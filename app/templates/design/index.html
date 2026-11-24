@@ -18,12 +18,16 @@
         </div>
         <div class="panel-body">
             <p class="text-muted" style="margin-bottom:var(--space-md);font-size:var(--font-size-sm)">
-                Maintenance calories are used to compute daily deficit/surplus (not a calorie “goal”). Protein goal is used for the weekly ±15% hit count.
+                Daily TDEE = baseline + (steps ÷ 1000 × kcal per 1k) + workout calories burned. Deficit/surplus is vs that dynamic total.
             </p>
             <div class="form-grid-2">
                 <div class="field">
-                    <label for="design-maintenance">Maintenance calories (TDEE)</label>
-                    <input type="number" id="design-maintenance" min="0" step="50">
+                    <label for="design-tdee-baseline">TDEE baseline (kcal)</label>
+                    <input type="number" id="design-tdee-baseline" min="0" step="50" value="2050">
+                </div>
+                <div class="field">
+                    <label for="design-steps-kcal">kcal per 1,000 steps</label>
+                    <input type="number" id="design-steps-kcal" min="0" step="1" value="45">
                 </div>
                 <div class="field">
                     <label for="design-pro-goal">Daily protein goal (g)</label>

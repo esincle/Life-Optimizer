@@ -224,12 +224,13 @@ class TodoStep(db.Model):
 # ── NUTRITION ──────────────────────────────────────────────────────────────────
 
 class NutritionTarget(db.Model):
-    """Singleton: maintenance calories, protein goal, and daily step goal."""
+    """Singleton: TDEE baseline + step burn rate, protein/steps goals."""
     __tablename__ = "nutrition_targets"
 
     id                   = db.Column(db.Integer, primary_key=True)
-    # Kept as calorie_goal in older DBs; migrate maps it → maintenance_calories usage
-    maintenance_calories = db.Column(db.Integer, nullable=False, default=2200)
+    # Dynamic TDEE = baseline + (steps/1000)*steps_kcal_per_1k + workout burn
+    tdee_baseline        = db.Column(db.Integer, nullable=False, default=2050)
+    steps_kcal_per_1k    = db.Column(db.Integer, nullable=False, default=45)
     protein_goal         = db.Column(db.Integer, nullable=False, default=150)
     steps_goal           = db.Column(db.Integer, nullable=False, default=8000)
     updated_at           = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -237,7 +238,8 @@ class NutritionTarget(db.Model):
     def to_dict(self):
         return {
             "id": self.id,
-            "maintenance_calories": self.maintenance_calories,
+            "tdee_baseline": self.tdee_baseline,
+            "steps_kcal_per_1k": self.steps_kcal_per_1k,
             "protein_goal": self.protein_goal,
             "steps_goal": self.steps_goal,
         }
@@ -292,6 +294,7 @@ class Workout(db.Model):
     kind             = db.Column(db.String(20), nullable=False)  # zone2 | full | upper | lower
     title            = db.Column(db.String(200), nullable=True)
     duration_minutes = db.Column(db.Integer, nullable=True)
+    calories_burned  = db.Column(db.Integer, nullable=True)  # optional; adds to daily TDEE
     notes            = db.Column(db.Text, nullable=True)
     created_at       = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -302,6 +305,7 @@ class Workout(db.Model):
             "kind": self.kind,
             "title": self.title,
             "duration_minutes": self.duration_minutes,
+            "calories_burned": self.calories_burned,
             "notes": self.notes,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

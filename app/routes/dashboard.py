@@ -29,7 +29,8 @@ def get_or_create_nutrition_target():
     target = NutritionTarget.query.first()
     if not target:
         target = NutritionTarget(
-            maintenance_calories=2200,
+            tdee_baseline=2050,
+            steps_kcal_per_1k=45,
             protein_goal=150,
             steps_goal=8000,
         )
@@ -45,6 +46,27 @@ def parse_date(value, fallback=None):
         return date.fromisoformat(value)
     except (TypeError, ValueError):
         return fallback
+
+
+def compute_tdee_for_day(day, target=None):
+    """TDEE = baseline + 45kcal/1k steps + workout calories burned."""
+    target = target or get_or_create_nutrition_target()
+    steps_row = DailySteps.query.filter_by(log_date=day).first()
+    step_count = steps_row.count if steps_row else 0
+    rate = target.steps_kcal_per_1k or 0
+    from_steps = round((step_count / 1000.0) * rate) if rate else 0
+    workouts = Workout.query.filter_by(log_date=day).all()
+    from_workouts = sum(w.calories_burned or 0 for w in workouts)
+    baseline = target.tdee_baseline or 0
+    tdee = baseline + from_steps + from_workouts
+    return {
+        "tdee": tdee,
+        "baseline": baseline,
+        "from_steps": from_steps,
+        "from_workouts": from_workouts,
+        "steps": step_count,
+        "steps_kcal_per_1k": rate,
+    }
 
 
 def sync_todo_completion(todo):
@@ -249,11 +271,15 @@ def get_nutrition_targets():
 def update_nutrition_targets():
     data = request.get_json() or {}
     target = get_or_create_nutrition_target()
-    # Accept maintenance_calories; also accept legacy calorie_goal key
-    if "maintenance_calories" in data:
-        target.maintenance_calories = max(0, int(data["maintenance_calories"]))
+    # Prefer tdee_baseline; accept legacy keys
+    if "tdee_baseline" in data:
+        target.tdee_baseline = max(0, int(data["tdee_baseline"]))
+    elif "maintenance_calories" in data:
+        target.tdee_baseline = max(0, int(data["maintenance_calories"]))
     elif "calorie_goal" in data:
-        target.maintenance_calories = max(0, int(data["calorie_goal"]))
+        target.tdee_baseline = max(0, int(data["calorie_goal"]))
+    if "steps_kcal_per_1k" in data:
+        target.steps_kcal_per_1k = max(0, int(data["steps_kcal_per_1k"]))
     if "protein_goal" in data:
         target.protein_goal = max(0, int(data["protein_goal"]))
     if "steps_goal" in data:
@@ -272,11 +298,13 @@ def nutrition_today():
                .all())
     calories = sum(e.calories for e in entries)
     protein = sum(e.protein for e in entries)
-    deficit = target.maintenance_calories - calories  # positive = deficit
+    tdee_info = compute_tdee_for_day(today, target)
+    deficit = tdee_info["tdee"] - calories  # positive = deficit
     return jsonify({
         "date": today.isoformat(),
         "targets": target.to_dict(),
         "totals": {"calories": calories, "protein": protein},
+        "tdee": tdee_info,
         "deficit": deficit,  # + deficit, − surplus
         "entries": [e.to_dict() for e in entries],
     })
@@ -284,7 +312,7 @@ def nutrition_today():
 
 @dashboard_bp.route("/api/nutrition/week", methods=["GET"])
 def nutrition_week():
-    """Weekly calorie deficit/surplus + protein days within 15% of goal."""
+    """Weekly calorie deficit/surplus vs dynamic TDEE + protein ±15% days."""
     today = date.today()
     week_start = today - timedelta(days=today.weekday())
     week_end = week_start + timedelta(days=6)
@@ -310,18 +338,20 @@ def nutrition_week():
         if d > today:
             break
         totals = by_day.get(d)
+        tdee_info = compute_tdee_for_day(d, target)
         if not totals:
             days.append({
                 "date": d.isoformat(),
                 "calories": 0,
                 "protein": 0,
+                "tdee": tdee_info,
                 "deficit": None,
                 "protein_within_15": False,
                 "logged": False,
             })
             continue
         days_with_food += 1
-        deficit = target.maintenance_calories - totals["calories"]
+        deficit = tdee_info["tdee"] - totals["calories"]
         total_deficit += deficit
         within = False
         if target.protein_goal > 0:
@@ -334,6 +364,7 @@ def nutrition_week():
             "date": d.isoformat(),
             "calories": totals["calories"],
             "protein": totals["protein"],
+            "tdee": tdee_info,
             "deficit": deficit,
             "protein_within_15": within,
             "logged": True,
@@ -343,7 +374,7 @@ def nutrition_week():
         "week_start": week_start.isoformat(),
         "week_end": week_end.isoformat(),
         "targets": target.to_dict(),
-        "total_deficit": total_deficit,  # sum of (maintenance − intake) on logged days
+        "total_deficit": total_deficit,  # sum of (dynamic TDEE − intake) on logged days
         "avg_deficit": round(total_deficit / days_with_food) if days_with_food else 0,
         "days_logged": days_with_food,
         "protein_hit_days": protein_hit_days,
@@ -524,11 +555,13 @@ def create_workout():
     if kind not in VALID_WORKOUT_KINDS:
         return jsonify({"error": "kind must be zone2, full, upper, or lower"}), 400
     duration = data.get("duration_minutes")
+    burned = data.get("calories_burned")
     workout = Workout(
         log_date=parse_date(data.get("log_date"), date.today()),
         kind=kind,
         title=(data.get("title") or "").strip() or None,
         duration_minutes=int(duration) if duration not in (None, "") else None,
+        calories_burned=max(0, int(burned)) if burned not in (None, "") else None,
         notes=data.get("notes"),
     )
     db.session.add(workout)

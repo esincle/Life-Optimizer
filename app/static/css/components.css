@@ -800,6 +800,12 @@
 .deficit-line.is-deficit { color: var(--color-accent-dark); font-weight: 600; }
 .deficit-line.is-surplus { color: var(--color-morning); font-weight: 600; }
 
+.tdee-breakdown {
+    font-size: var(--font-size-xs);
+    margin-top: 4px;
+    line-height: 1.4;
+}
+
 .week-nutrition {
     display: grid;
     grid-template-columns: 1fr 1fr;

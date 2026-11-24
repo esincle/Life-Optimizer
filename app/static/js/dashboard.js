@@ -399,16 +399,18 @@ async function loadNutrition() {
         api.get("/today/api/nutrition/today"),
         api.get("/today/api/nutrition/week"),
     ]);
-    const { targets, totals, deficit, entries } = today;
+    const { targets, totals, deficit, entries, tdee } = today;
     const proPct = targets.protein_goal
         ? Math.min(100, Math.round(totals.protein / targets.protein_goal * 100))
         : 0;
 
     document.getElementById("cal-label").textContent = `${totals.calories} kcal`;
     document.getElementById("deficit-line").textContent =
-        `${formatDeficit(deficit)} · maintenance ${targets.maintenance_calories}`;
+        `${formatDeficit(deficit)} · TDEE ${tdee.tdee}`;
     document.getElementById("deficit-line").className =
         `deficit-line ${deficit > 0 ? "is-deficit" : deficit < 0 ? "is-surplus" : ""}`;
+    document.getElementById("tdee-breakdown").textContent =
+        `TDEE ${tdee.tdee} = ${tdee.baseline} baseline + ${tdee.from_steps} from steps (${tdee.steps.toLocaleString()}) + ${tdee.from_workouts} from workouts`;
 
     document.getElementById("pro-label").textContent = `${totals.protein} / ${targets.protein_goal} g`;
     document.getElementById("pro-bar").style.width = `${proPct}%`;
@@ -487,7 +489,7 @@ async function saveSteps() {
     if (!Number.isFinite(count) || count < 0) return showToast("Invalid step count", "error");
     try {
         await api.put("/today/api/steps/today", { count: Math.round(count) });
-        await loadSteps();
+        await Promise.all([loadSteps(), loadNutrition()]);
         showToast("Steps saved", "success");
     } catch (e) {
         showToast(e.message, "error");
@@ -517,7 +519,7 @@ async function loadWorkouts() {
                         <span class="kind-badge kind-${w.kind}">${kindLabel(w.kind)}</span>
                         ${escHtml(w.title || "Session")}
                     </div>
-                    <div class="entry-list-date">${escHtml(w.log_date)}${w.duration_minutes ? ` · ${w.duration_minutes} min` : ""}</div>
+                    <div class="entry-list-date">${escHtml(w.log_date)}${w.duration_minutes ? ` · ${w.duration_minutes} min` : ""}${w.calories_burned ? ` · ${w.calories_burned} kcal` : ""}</div>
                 </div>
                 <button class="btn btn-danger btn-sm" type="button" onclick="deleteWorkout(${w.id})">✕</button>
             </li>`).join("")
@@ -528,15 +530,18 @@ async function addWorkout() {
     const kind = document.getElementById("workout-kind").value;
     const title = document.getElementById("workout-title").value.trim();
     const mins = document.getElementById("workout-mins").value;
+    const kcal = document.getElementById("workout-kcal").value;
     try {
         await api.post("/today/api/workouts", {
             kind,
             title: title || null,
             duration_minutes: mins ? Number(mins) : null,
+            calories_burned: kcal !== "" ? Number(kcal) : null,
         });
         document.getElementById("workout-title").value = "";
         document.getElementById("workout-mins").value = "";
-        await loadWorkouts();
+        document.getElementById("workout-kcal").value = "";
+        await Promise.all([loadWorkouts(), loadNutrition()]);
         showToast("Workout logged", "success");
     } catch (e) {
         showToast(e.message, "error");
@@ -546,7 +551,7 @@ async function addWorkout() {
 async function deleteWorkout(id) {
     try {
         await api.delete(`/today/api/workouts/${id}`);
-        await loadWorkouts();
+        await Promise.all([loadWorkouts(), loadNutrition()]);
     } catch (e) {
         showToast(e.message, "error");
     }

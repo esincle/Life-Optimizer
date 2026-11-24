@@ -19,7 +19,8 @@ document.addEventListener("DOMContentLoaded", () => {
 async function loadNutritionGoals() {
     try {
         const t = await api.get("/today/api/nutrition/targets");
-        document.getElementById("design-maintenance").value = t.maintenance_calories;
+        document.getElementById("design-tdee-baseline").value = t.tdee_baseline ?? 2050;
+        document.getElementById("design-steps-kcal").value = t.steps_kcal_per_1k ?? 45;
         document.getElementById("design-pro-goal").value = t.protein_goal;
         document.getElementById("design-steps-goal").value = t.steps_goal ?? 8000;
     } catch (e) {
@@ -28,12 +29,14 @@ async function loadNutritionGoals() {
 }
 
 async function saveNutritionGoals() {
-    const maintenance_calories = Number(document.getElementById("design-maintenance").value);
+    const tdee_baseline = Number(document.getElementById("design-tdee-baseline").value);
+    const steps_kcal_per_1k = Number(document.getElementById("design-steps-kcal").value);
     const protein_goal = Number(document.getElementById("design-pro-goal").value);
     const steps_goal = Number(document.getElementById("design-steps-goal").value);
     try {
         await api.put("/today/api/nutrition/targets", {
-            maintenance_calories,
+            tdee_baseline,
+            steps_kcal_per_1k,
             protein_goal,
             steps_goal,
         });
