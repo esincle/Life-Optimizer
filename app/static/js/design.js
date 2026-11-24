@@ -21,6 +21,7 @@ async function loadNutritionGoals() {
         const t = await api.get("/today/api/nutrition/targets");
         document.getElementById("design-maintenance").value = t.maintenance_calories;
         document.getElementById("design-pro-goal").value = t.protein_goal;
+        document.getElementById("design-steps-goal").value = t.steps_goal ?? 8000;
     } catch (e) {
         showToast(e.message, "error");
     }
@@ -29,8 +30,13 @@ async function loadNutritionGoals() {
 async function saveNutritionGoals() {
     const maintenance_calories = Number(document.getElementById("design-maintenance").value);
     const protein_goal = Number(document.getElementById("design-pro-goal").value);
+    const steps_goal = Number(document.getElementById("design-steps-goal").value);
     try {
-        await api.put("/today/api/nutrition/targets", { maintenance_calories, protein_goal });
+        await api.put("/today/api/nutrition/targets", {
+            maintenance_calories,
+            protein_goal,
+            steps_goal,
+        });
         showToast("Nutrition settings saved", "success");
     } catch (e) {
         showToast(e.message, "error");

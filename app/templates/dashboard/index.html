@@ -129,6 +129,41 @@
             <ul class="entry-list compact" id="food-list"></ul>
         </section>
 
+        <!-- Steps -->
+        <section class="card today-section" id="section-steps">
+            <div class="card-header">
+                <h3 class="card-title">Steps</h3>
+                <a class="btn btn-ghost btn-sm" href="/design/#panel-nutrition">Goal</a>
+            </div>
+            <div class="macro-block" style="margin-bottom:var(--space-md)">
+                <div class="progress-label">
+                    <span>Today</span>
+                    <span id="steps-label">0 / 0</span>
+                </div>
+                <div class="progress-wrap">
+                    <div class="progress-bar progress-bar-steps" id="steps-bar" style="width:0%"></div>
+                </div>
+            </div>
+            <div class="week-nutrition" id="week-steps">
+                <div class="week-stat">
+                    <div class="week-stat-label">Week total</div>
+                    <div class="week-stat-value" id="week-steps-total">0</div>
+                    <div class="week-stat-meta" id="week-steps-meta">avg —</div>
+                </div>
+                <div class="week-stat">
+                    <div class="week-stat-label">Goal days</div>
+                    <div class="week-stat-value" id="week-steps-hits">0</div>
+                    <div class="week-stat-meta">hit daily goal</div>
+                </div>
+            </div>
+            <div class="add-form nutrition-quick">
+                <div class="add-form-row">
+                    <input type="number" id="steps-count" placeholder="Steps today" min="0" step="100">
+                    <button class="btn btn-primary btn-sm" type="button" onclick="saveSteps()">Save</button>
+                </div>
+            </div>
+        </section>
+
         <!-- Workouts -->
         <section class="card today-section" id="section-workouts">
             <div class="card-header">

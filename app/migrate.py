@@ -22,6 +22,15 @@ def migrate_schema():
                     "ADD COLUMN maintenance_calories INTEGER NOT NULL DEFAULT 2200"
                 ))
 
+        # Re-inspect after possible rename, then add steps_goal if missing
+        cols = {c["name"] for c in inspect(engine).get_columns("nutrition_targets")}
+        if "steps_goal" not in cols:
+            with engine.begin() as conn:
+                conn.execute(text(
+                    "ALTER TABLE nutrition_targets "
+                    "ADD COLUMN steps_goal INTEGER NOT NULL DEFAULT 8000"
+                ))
+
     # Remap legacy lifting workouts → full (counts for upper + lower)
     if "workouts" in tables:
         with engine.begin() as conn:

@@ -2,7 +2,8 @@ from datetime import date, datetime, timedelta
 from flask import Blueprint, render_template, request, jsonify
 from app.extensions import db
 from app.models import (
-    Todo, TodoStep, NutritionTarget, NutritionEntry, Workout, Goal, Reminder,
+    Todo, TodoStep, NutritionTarget, NutritionEntry, DailySteps,
+    Workout, Goal, Reminder,
 )
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/today")
@@ -27,7 +28,11 @@ def _clamp(n, lo, hi):
 def get_or_create_nutrition_target():
     target = NutritionTarget.query.first()
     if not target:
-        target = NutritionTarget(maintenance_calories=2200, protein_goal=150)
+        target = NutritionTarget(
+            maintenance_calories=2200,
+            protein_goal=150,
+            steps_goal=8000,
+        )
         db.session.add(target)
         db.session.commit()
     return target
@@ -206,6 +211,8 @@ def update_nutrition_targets():
         target.maintenance_calories = max(0, int(data["calorie_goal"]))
     if "protein_goal" in data:
         target.protein_goal = max(0, int(data["protein_goal"]))
+    if "steps_goal" in data:
+        target.steps_goal = max(0, int(data["steps_goal"]))
     db.session.commit()
     return jsonify(target.to_dict())
 
@@ -323,6 +330,94 @@ def delete_nutrition_entry(entry_id):
     db.session.delete(entry)
     db.session.commit()
     return jsonify({"ok": True})
+
+
+# ── STEPS ──────────────────────────────────────────────────────────────────────
+
+@dashboard_bp.route("/api/steps/today", methods=["GET"])
+def get_steps_today():
+    today = date.today()
+    target = get_or_create_nutrition_target()
+    row = DailySteps.query.filter_by(log_date=today).first()
+    count = row.count if row else 0
+    goal = target.steps_goal or 0
+    return jsonify({
+        "date": today.isoformat(),
+        "count": count,
+        "steps_goal": goal,
+        "pct": min(100, round(count / goal * 100)) if goal else 0,
+        "logged": row is not None,
+    })
+
+
+@dashboard_bp.route("/api/steps/today", methods=["PUT"])
+def put_steps_today():
+    data = request.get_json() or {}
+    today = parse_date(data.get("log_date"), date.today())
+    try:
+        count = max(0, int(data.get("count", 0)))
+    except (TypeError, ValueError):
+        return jsonify({"error": "count must be an integer"}), 400
+
+    row = DailySteps.query.filter_by(log_date=today).first()
+    if not row:
+        row = DailySteps(log_date=today, count=count)
+        db.session.add(row)
+    else:
+        row.count = count
+    db.session.commit()
+
+    target = get_or_create_nutrition_target()
+    goal = target.steps_goal or 0
+    return jsonify({
+        "date": today.isoformat(),
+        "count": row.count,
+        "steps_goal": goal,
+        "pct": min(100, round(row.count / goal * 100)) if goal else 0,
+        "logged": True,
+    })
+
+
+@dashboard_bp.route("/api/steps/week", methods=["GET"])
+def steps_week():
+    today = date.today()
+    week_start = today - timedelta(days=today.weekday())
+    week_end = week_start + timedelta(days=6)
+    target = get_or_create_nutrition_target()
+    rows = (DailySteps.query
+            .filter(DailySteps.log_date >= week_start, DailySteps.log_date <= week_end)
+            .all())
+    by_date = {r.log_date: r.count for r in rows}
+
+    days = []
+    total = 0
+    logged = 0
+    hit = 0
+    goal = target.steps_goal or 0
+    for i in range(7):
+        d = week_start + timedelta(days=i)
+        if d > today:
+            break
+        if d in by_date:
+            count = by_date[d]
+            logged += 1
+            total += count
+            if goal and count >= goal:
+                hit += 1
+            days.append({"date": d.isoformat(), "count": count, "logged": True, "hit_goal": bool(goal and count >= goal)})
+        else:
+            days.append({"date": d.isoformat(), "count": 0, "logged": False, "hit_goal": False})
+
+    return jsonify({
+        "week_start": week_start.isoformat(),
+        "week_end": week_end.isoformat(),
+        "steps_goal": goal,
+        "total": total,
+        "avg": round(total / logged) if logged else 0,
+        "days_logged": logged,
+        "goal_hit_days": hit,
+        "days": days,
+    })
 
 
 # ── WORKOUTS ───────────────────────────────────────────────────────────────────

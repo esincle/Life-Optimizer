@@ -219,13 +219,14 @@ class TodoStep(db.Model):
 # ── NUTRITION ──────────────────────────────────────────────────────────────────
 
 class NutritionTarget(db.Model):
-    """Singleton: maintenance calories (for deficit/surplus) + daily protein goal."""
+    """Singleton: maintenance calories, protein goal, and daily step goal."""
     __tablename__ = "nutrition_targets"
 
     id                   = db.Column(db.Integer, primary_key=True)
     # Kept as calorie_goal in older DBs; migrate maps it → maintenance_calories usage
     maintenance_calories = db.Column(db.Integer, nullable=False, default=2200)
     protein_goal         = db.Column(db.Integer, nullable=False, default=150)
+    steps_goal           = db.Column(db.Integer, nullable=False, default=8000)
     updated_at           = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self):
@@ -233,6 +234,25 @@ class NutritionTarget(db.Model):
             "id": self.id,
             "maintenance_calories": self.maintenance_calories,
             "protein_goal": self.protein_goal,
+            "steps_goal": self.steps_goal,
+        }
+
+
+class DailySteps(db.Model):
+    """One step-count entry per calendar day."""
+    __tablename__ = "daily_steps"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    log_date   = db.Column(db.Date, nullable=False, unique=True, index=True)
+    count      = db.Column(db.Integer, nullable=False, default=0)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "log_date": self.log_date.isoformat(),
+            "count": self.count,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
 

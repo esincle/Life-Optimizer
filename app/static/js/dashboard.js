@@ -5,7 +5,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("today-date").textContent =
         today.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
-    await Promise.all([loadTodos(), loadGoals(), loadNutrition(), loadWorkouts()]);
+    await Promise.all([loadTodos(), loadGoals(), loadNutrition(), loadSteps(), loadWorkouts()]);
     initPushButton();
 
     ["food-label", "food-cal", "food-pro"].forEach(id => {
@@ -15,6 +15,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     document.getElementById("todo-title")?.addEventListener("keydown", e => {
         if (e.key === "Enter") { e.preventDefault(); addTodo(); }
+    });
+    document.getElementById("steps-count")?.addEventListener("keydown", e => {
+        if (e.key === "Enter") { e.preventDefault(); saveSteps(); }
     });
 });
 
@@ -333,6 +336,41 @@ async function deleteFood(id) {
     try {
         await api.delete(`/today/api/nutrition/entries/${id}`);
         await loadNutrition();
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+// ── STEPS ─────────────────────────────────────────────────────────────────────
+
+async function loadSteps() {
+    const [today, week] = await Promise.all([
+        api.get("/today/api/steps/today"),
+        api.get("/today/api/steps/week"),
+    ]);
+    document.getElementById("steps-label").textContent =
+        `${today.count.toLocaleString()} / ${today.steps_goal.toLocaleString()}`;
+    document.getElementById("steps-bar").style.width = `${today.pct}%`;
+    document.getElementById("steps-count").value = today.logged ? today.count : "";
+
+    document.getElementById("week-steps-total").textContent = week.total.toLocaleString();
+    document.getElementById("week-steps-meta").textContent =
+        week.days_logged
+            ? `avg ${week.avg.toLocaleString()} · ${week.days_logged} day${week.days_logged === 1 ? "" : "s"}`
+            : "No days logged";
+    document.getElementById("week-steps-hits").textContent =
+        `${week.goal_hit_days}/${week.days_logged || 0}`;
+}
+
+async function saveSteps() {
+    const raw = document.getElementById("steps-count").value;
+    if (raw === "") return showToast("Enter today’s steps", "error");
+    const count = Number(raw);
+    if (!Number.isFinite(count) || count < 0) return showToast("Invalid step count", "error");
+    try {
+        await api.put("/today/api/steps/today", { count: Math.round(count) });
+        await loadSteps();
+        showToast("Steps saved", "success");
     } catch (e) {
         showToast(e.message, "error");
     }

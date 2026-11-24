@@ -725,6 +725,10 @@
     background: #3a90d0;
 }
 
+.progress-bar-steps {
+    background: #e8a838;
+}
+
 .nutrition-quick {
     margin-bottom: var(--space-md);
 }
