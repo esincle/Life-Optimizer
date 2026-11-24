@@ -148,3 +148,146 @@ class JournalResponse(db.Model):
 
     entry  = db.relationship("JournalEntry", back_populates="responses")
     prompt = db.relationship("JournalPrompt", back_populates="responses")
+
+
+# ── TODOS ──────────────────────────────────────────────────────────────────────
+
+class Todo(db.Model):
+    __tablename__ = "todos"
+
+    id           = db.Column(db.Integer, primary_key=True)
+    title        = db.Column(db.String(300), nullable=False)
+    notes        = db.Column(db.Text, nullable=True)
+    done         = db.Column(db.Boolean, default=False, nullable=False)
+    importance   = db.Column(db.Integer, nullable=False, default=3)  # 1–5
+    effort       = db.Column(db.Integer, nullable=False, default=3)  # 1–5
+    due_date     = db.Column(db.Date, nullable=True)
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime, nullable=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "notes": self.notes,
+            "done": self.done,
+            "importance": self.importance,
+            "effort": self.effort,
+            "due_date": self.due_date.isoformat() if self.due_date else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }
+
+
+# ── NUTRITION ──────────────────────────────────────────────────────────────────
+
+class NutritionTarget(db.Model):
+    """Singleton-style row: daily calorie and protein goals (adjustable)."""
+    __tablename__ = "nutrition_targets"
+
+    id            = db.Column(db.Integer, primary_key=True)
+    calorie_goal  = db.Column(db.Integer, nullable=False, default=2200)
+    protein_goal  = db.Column(db.Integer, nullable=False, default=150)
+    updated_at    = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "calorie_goal": self.calorie_goal,
+            "protein_goal": self.protein_goal,
+        }
+
+
+class NutritionEntry(db.Model):
+    __tablename__ = "nutrition_entries"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    log_date   = db.Column(db.Date, nullable=False, index=True)
+    label      = db.Column(db.String(200), nullable=False)
+    calories   = db.Column(db.Integer, nullable=False, default=0)
+    protein    = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "log_date": self.log_date.isoformat(),
+            "label": self.label,
+            "calories": self.calories,
+            "protein": self.protein,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ── WORKOUTS ───────────────────────────────────────────────────────────────────
+
+class Workout(db.Model):
+    __tablename__ = "workouts"
+
+    id               = db.Column(db.Integer, primary_key=True)
+    log_date         = db.Column(db.Date, nullable=False, index=True)
+    kind             = db.Column(db.String(20), nullable=False)  # "zone2" | "lifting"
+    title            = db.Column(db.String(200), nullable=True)
+    duration_minutes = db.Column(db.Integer, nullable=True)
+    notes            = db.Column(db.Text, nullable=True)
+    created_at       = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "log_date": self.log_date.isoformat(),
+            "kind": self.kind,
+            "title": self.title,
+            "duration_minutes": self.duration_minutes,
+            "notes": self.notes,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ── NEAR-TERM GOALS ────────────────────────────────────────────────────────────
+
+class Goal(db.Model):
+    __tablename__ = "goals"
+
+    id          = db.Column(db.Integer, primary_key=True)
+    title       = db.Column(db.String(300), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    target_date = db.Column(db.Date, nullable=True)
+    status      = db.Column(db.String(20), nullable=False, default="active")  # active|done|dropped
+    created_at  = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at  = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    completed_at = db.Column(db.DateTime, nullable=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "description": self.description,
+            "target_date": self.target_date.isoformat() if self.target_date else None,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }
+
+
+# ── REMINDERS (browser / computer push) ────────────────────────────────────────
+
+class Reminder(db.Model):
+    __tablename__ = "reminders"
+
+    id           = db.Column(db.Integer, primary_key=True)
+    label        = db.Column(db.String(200), nullable=False)
+    kind         = db.Column(db.String(40), nullable=False, default="custom")
+    # morning | evening | nutrition | workout | custom
+    time_of_day  = db.Column(db.String(5), nullable=False)  # "HH:MM" 24h local
+    enabled      = db.Column(db.Boolean, default=True, nullable=False)
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "label": self.label,
+            "kind": self.kind,
+            "time_of_day": self.time_of_day,
+            "enabled": self.enabled,
+        }

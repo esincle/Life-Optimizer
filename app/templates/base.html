@@ -17,14 +17,17 @@
         <div class="nav-inner">
             <a href="/" class="nav-brand">Life <span>Optimizer</span></a>
             <div class="nav-links">
+                <a href="/today/" class="nav-link {% if request.path.startswith('/today') or request.path == '/' %}active{% endif %}">
+                    Today
+                </a>
                 <a href="/tracker/" class="nav-link {% if request.path.startswith('/tracker') %}active{% endif %}">
-                    📊 Tracker
+                    Tracker
                 </a>
                 <a href="/journal/" class="nav-link {% if request.path.startswith('/journal') %}active{% endif %}">
-                    📓 Journal
+                    Journal
                 </a>
                 <a href="/design/" class="nav-link {% if request.path.startswith('/design') %}active{% endif %}">
-                    ⚙️ Design
+                    Design
                 </a>
             </div>
             <span class="nav-date" id="nav-date"></span>
@@ -46,6 +49,7 @@
     </script>
 
     <script src="{{ url_for('static', filename='js/api.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/reminders.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>
