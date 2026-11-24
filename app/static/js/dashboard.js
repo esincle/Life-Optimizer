@@ -84,7 +84,234 @@ function switchMainTab(tab, btn) {
     btn.classList.add("active");
     document.getElementById("main-tab-todo").classList.toggle("active", tab === "todo");
     document.getElementById("main-tab-goals").classList.toggle("active", tab === "goals");
+    document.getElementById("main-tab-history").classList.toggle("active", tab === "history");
     if (tab === "goals") loadGoals();
+    if (tab === "history") loadHistoryList();
+}
+
+// ── HISTORY ───────────────────────────────────────────────────────────────────
+
+let historySelectedDate = null;
+
+function formatDeficitShort(n) {
+    if (n == null) return "—";
+    if (n > 0) return `−${n}`;
+    if (n < 0) return `+${Math.abs(n)}`;
+    return "0";
+}
+
+function formatDayLabel(iso) {
+    const d = new Date(iso + "T00:00:00");
+    const today = localISODate();
+    const yday = localISODate(new Date(Date.now() - 86400000));
+    if (iso === today) return "Today";
+    if (iso === yday) return "Yesterday";
+    return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
+async function loadHistoryList() {
+    const active = document.getElementById("history-active-only")?.checked ? "&active=1" : "";
+    const data = await api.get(`/today/api/history?days=28${active}`);
+    const list = document.getElementById("history-list");
+    if (!data.days_list.length) {
+        list.innerHTML = `<li class="text-muted" style="padding:var(--space-sm) 0">No days to show.</li>`;
+        return;
+    }
+    list.innerHTML = data.days_list.map(day => {
+        const deficitClass = day.deficit == null
+            ? ""
+            : day.deficit > 0 ? "hist-deficit" : day.deficit < 0 ? "hist-surplus" : "hist-even";
+        const deficitText = day.deficit == null
+            ? `<span class="hist-pill muted">No food log</span>`
+            : `<span class="hist-pill ${deficitClass}">${formatDeficitShort(day.deficit)} kcal</span>`;
+        const selected = historySelectedDate === day.date ? " selected" : "";
+        return `
+        <li class="history-row${selected}${day.has_activity ? "" : " empty-day"}" onclick="openHistoryDay('${day.date}')">
+            <div class="history-row-main">
+                <div class="history-row-date">${formatDayLabel(day.date)}</div>
+                <div class="history-row-iso text-muted">${escHtml(day.date)}</div>
+            </div>
+            <div class="history-row-metrics">
+                ${deficitText}
+                <span class="hist-stat" title="Protein">${day.protein}g pro${day.protein_hit ? " ✓" : ""}</span>
+                <span class="hist-stat" title="Steps">${(day.steps || 0).toLocaleString()} steps${day.steps_hit ? " ✓" : ""}</span>
+                <span class="hist-stat" title="Workouts">${day.workouts_count} workout${day.workouts_count === 1 ? "" : "s"}</span>
+                <span class="hist-stat" title="Todos completed">${day.todos_completed} done</span>
+            </div>
+        </li>`;
+    }).join("");
+}
+
+async function openHistoryDay(dateStr) {
+    historySelectedDate = dateStr;
+    document.querySelectorAll(".history-row").forEach(el => {
+        el.classList.toggle("selected", el.getAttribute("onclick")?.includes(dateStr));
+    });
+    const detail = document.getElementById("history-detail");
+    detail.classList.remove("hidden");
+    document.getElementById("history-detail-title").textContent = formatDayLabel(dateStr);
+
+    const data = await api.get(`/today/api/history/${dateStr}`);
+    const o = data.overview;
+    const deficitLabel = o.deficit == null
+        ? "No food logged"
+        : formatDeficit(o.deficit);
+    document.getElementById("history-detail-stats").innerHTML = `
+        <div class="history-stat-card ${o.deficit == null ? "" : o.deficit > 0 ? "is-deficit" : o.deficit < 0 ? "is-surplus" : ""}">
+            <div class="week-stat-label">Calorie balance</div>
+            <div class="week-stat-value">${o.deficit == null ? "—" : formatDeficitShort(o.deficit)}</div>
+            <div class="week-stat-meta">${deficitLabel}</div>
+        </div>
+        <div class="history-stat-card">
+            <div class="week-stat-label">TDEE</div>
+            <div class="week-stat-value">${o.tdee.tdee}</div>
+            <div class="week-stat-meta">${o.tdee.baseline} + ${o.tdee.from_steps} steps + ${o.tdee.from_workouts} workouts</div>
+        </div>
+        <div class="history-stat-card">
+            <div class="week-stat-label">Intake / protein</div>
+            <div class="week-stat-value">${o.intake_calories}</div>
+            <div class="week-stat-meta">${o.protein} / ${o.protein_goal} g${o.protein_hit ? " · on target" : ""}</div>
+        </div>
+        <div class="history-stat-card">
+            <div class="week-stat-label">Activity</div>
+            <div class="week-stat-value">${(o.steps || 0).toLocaleString()}</div>
+            <div class="week-stat-meta">${o.workouts_count} workouts · ${o.todos_completed} todos done</div>
+        </div>
+    `;
+
+    document.getElementById("hist-steps").value = o.steps || "";
+
+    const foodList = document.getElementById("hist-food-list");
+    foodList.innerHTML = data.entries.length
+        ? data.entries.map(e => `
+            <li class="entry-list-item food-row">
+                <div>
+                    <div class="entry-list-snippet">${escHtml(e.label)}</div>
+                    <div class="entry-list-date">${e.calories} kcal · ${e.protein} g</div>
+                </div>
+                <button class="btn btn-danger btn-sm" type="button" onclick="deleteHistoryFood(${e.id})">✕</button>
+            </li>`).join("")
+        : `<li class="text-muted" style="padding:var(--space-sm) 0">No food logged.</li>`;
+
+    const workoutList = document.getElementById("hist-workout-list");
+    workoutList.innerHTML = data.workouts.length
+        ? data.workouts.map(w => `
+            <li class="entry-list-item food-row">
+                <div>
+                    <div class="entry-list-snippet">
+                        <span class="kind-badge kind-${w.kind}">${kindLabel(w.kind)}</span>
+                        ${escHtml(w.title || "Session")}
+                    </div>
+                    <div class="entry-list-date">${w.duration_minutes ? `${w.duration_minutes} min` : ""}${w.calories_burned ? ` · ${w.calories_burned} kcal` : ""}</div>
+                </div>
+                <button class="btn btn-danger btn-sm" type="button" onclick="deleteHistoryWorkout(${w.id})">✕</button>
+            </li>`).join("")
+        : `<li class="text-muted" style="padding:var(--space-sm) 0">No workouts.</li>`;
+
+    const todosList = document.getElementById("hist-todos-list");
+    const completed = data.completed_todos || [];
+    todosList.innerHTML = completed.length
+        ? completed.map(t => `
+            <li class="entry-list-item">
+                <div class="entry-list-snippet">${escHtml(t.title)}</div>
+                <div class="entry-list-date">${escHtml(t.bucket)}${t.completed_at ? ` · ${escHtml(t.completed_at.slice(0, 16).replace("T", " "))}` : ""}</div>
+            </li>`).join("")
+        : `<li class="text-muted" style="padding:var(--space-sm) 0">No completions logged.</li>`;
+
+    detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function closeHistoryDetail() {
+    historySelectedDate = null;
+    document.getElementById("history-detail").classList.add("hidden");
+    document.querySelectorAll(".history-row").forEach(el => el.classList.remove("selected"));
+}
+
+async function saveHistorySteps() {
+    if (!historySelectedDate) return;
+    const raw = document.getElementById("hist-steps").value;
+    if (raw === "") return showToast("Enter steps", "error");
+    try {
+        await api.put("/today/api/steps/today", {
+            log_date: historySelectedDate,
+            count: Math.round(Number(raw)),
+        });
+        showToast("Steps saved", "success");
+        await refreshHistoryAfterEdit();
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+async function addHistoryFood() {
+    if (!historySelectedDate) return;
+    const label = document.getElementById("hist-food-label").value.trim();
+    const calories = Number(document.getElementById("hist-food-cal").value || 0);
+    const protein = Number(document.getElementById("hist-food-pro").value || 0);
+    if (!label) return showToast("Enter a meal name", "error");
+    try {
+        await api.post("/today/api/nutrition/entries", {
+            label, calories, protein, log_date: historySelectedDate,
+        });
+        document.getElementById("hist-food-label").value = "";
+        document.getElementById("hist-food-cal").value = "";
+        document.getElementById("hist-food-pro").value = "";
+        await refreshHistoryAfterEdit();
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+async function deleteHistoryFood(id) {
+    try {
+        await api.delete(`/today/api/nutrition/entries/${id}`);
+        await refreshHistoryAfterEdit();
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+async function addHistoryWorkout() {
+    if (!historySelectedDate) return;
+    const kind = document.getElementById("hist-workout-kind").value;
+    const title = document.getElementById("hist-workout-title").value.trim();
+    const mins = document.getElementById("hist-workout-mins").value;
+    const kcal = document.getElementById("hist-workout-kcal").value;
+    try {
+        await api.post("/today/api/workouts", {
+            kind,
+            title: title || null,
+            duration_minutes: mins ? Number(mins) : null,
+            calories_burned: kcal !== "" ? Number(kcal) : null,
+            log_date: historySelectedDate,
+        });
+        document.getElementById("hist-workout-title").value = "";
+        document.getElementById("hist-workout-mins").value = "";
+        document.getElementById("hist-workout-kcal").value = "";
+        showToast("Workout logged", "success");
+        await refreshHistoryAfterEdit();
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+async function deleteHistoryWorkout(id) {
+    try {
+        await api.delete(`/today/api/workouts/${id}`);
+        await refreshHistoryAfterEdit();
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+async function refreshHistoryAfterEdit() {
+    const date = historySelectedDate;
+    await loadHistoryList();
+    if (date) await openHistoryDay(date);
+    // Keep Today panels in sync if editing today
+    if (date === localISODate()) {
+        await Promise.all([loadNutrition(), loadSteps(), loadWorkouts()]);
+    }
 }
 
 function switchTodoBucket(bucket, btn) {

@@ -481,12 +481,166 @@ def create_nutrition_entry():
     return jsonify(entry.to_dict()), 201
 
 
+@dashboard_bp.route("/api/nutrition/entries/<int:entry_id>", methods=["PUT"])
+def update_nutrition_entry(entry_id):
+    entry = NutritionEntry.query.get_or_404(entry_id)
+    data = request.get_json() or {}
+    if "label" in data:
+        label = (data["label"] or "").strip()
+        if not label:
+            return jsonify({"error": "Label is required"}), 400
+        entry.label = label
+    if "calories" in data:
+        entry.calories = max(0, int(data["calories"] or 0))
+    if "protein" in data:
+        entry.protein = max(0, int(data["protein"] or 0))
+    if "log_date" in data:
+        entry.log_date = parse_date(data["log_date"], entry.log_date)
+    db.session.commit()
+    return jsonify(entry.to_dict())
+
+
 @dashboard_bp.route("/api/nutrition/entries/<int:entry_id>", methods=["DELETE"])
 def delete_nutrition_entry(entry_id):
     entry = NutritionEntry.query.get_or_404(entry_id)
     db.session.delete(entry)
     db.session.commit()
     return jsonify({"ok": True})
+
+
+# ── DAY HISTORY ────────────────────────────────────────────────────────────────
+
+def _day_bounds(d):
+    start = datetime.combine(d, datetime.min.time())
+    end = datetime.combine(d + timedelta(days=1), datetime.min.time())
+    return start, end
+
+
+def build_day_overview(d, target=None):
+    """Compact day snapshot for history list + detail."""
+    target = target or get_or_create_nutrition_target()
+    entries = NutritionEntry.query.filter_by(log_date=d).all()
+    calories = sum(e.calories for e in entries)
+    protein = sum(e.protein for e in entries)
+    tdee_info = compute_tdee_for_day(d, target)
+    food_logged = len(entries) > 0
+    deficit = (tdee_info["tdee"] - calories) if food_logged else None
+
+    protein_hit = False
+    if food_logged and target.protein_goal > 0:
+        lo = target.protein_goal * (1 - PROTEIN_TOLERANCE)
+        hi = target.protein_goal * (1 + PROTEIN_TOLERANCE)
+        protein_hit = lo <= protein <= hi
+
+    workouts = Workout.query.filter_by(log_date=d).all()
+    start, end = _day_bounds(d)
+    todos_completed = Todo.query.filter(
+        Todo.done.is_(True),
+        Todo.completed_at.isnot(None),
+        Todo.completed_at >= start,
+        Todo.completed_at < end,
+    ).count()
+    today_todos_open = Todo.query.filter_by(bucket="today", for_date=d, done=False).count()
+    today_todos_done = Todo.query.filter_by(bucket="today", for_date=d, done=True).count()
+
+    has_activity = (
+        food_logged
+        or tdee_info["steps"] > 0
+        or len(workouts) > 0
+        or todos_completed > 0
+        or today_todos_open > 0
+        or today_todos_done > 0
+    )
+
+    return {
+        "date": d.isoformat(),
+        "has_activity": has_activity,
+        "intake_calories": calories,
+        "protein": protein,
+        "protein_goal": target.protein_goal,
+        "protein_hit": protein_hit,
+        "tdee": tdee_info,
+        "deficit": deficit,
+        "steps": tdee_info["steps"],
+        "steps_goal": target.steps_goal,
+        "steps_hit": bool(target.steps_goal and tdee_info["steps"] >= target.steps_goal),
+        "workouts_count": len(workouts),
+        "workout_kcal": sum(w.calories_burned or 0 for w in workouts),
+        "todos_completed": todos_completed,
+        "today_todos_open": today_todos_open,
+        "today_todos_done": today_todos_done,
+        "food_entries": len(entries),
+    }
+
+
+@dashboard_bp.route("/api/history", methods=["GET"])
+def history_list():
+    """Past days overview for the History tab."""
+    try:
+        days = max(1, min(90, int(request.args.get("days", 21))))
+    except (TypeError, ValueError):
+        return jsonify({"error": "days must be an integer"}), 400
+
+    only_active = request.args.get("active", "0") == "1"
+    today = date.today()
+    target = get_or_create_nutrition_target()
+    rows = []
+    for i in range(days):
+        d = today - timedelta(days=i)
+        row = build_day_overview(d, target)
+        if only_active and not row["has_activity"]:
+            continue
+        rows.append(row)
+
+    return jsonify({
+        "days": days,
+        "targets": target.to_dict(),
+        "days_list": rows,
+    })
+
+
+@dashboard_bp.route("/api/history/<date_str>", methods=["GET"])
+def history_day(date_str):
+    """Full day detail for viewing/editing."""
+    d = parse_date(date_str)
+    if not d:
+        return jsonify({"error": "Invalid date"}), 400
+    if d > date.today():
+        return jsonify({"error": "Cannot open future dates"}), 400
+
+    target = get_or_create_nutrition_target()
+    overview = build_day_overview(d, target)
+    entries = (NutritionEntry.query
+               .filter_by(log_date=d)
+               .order_by(NutritionEntry.created_at.desc())
+               .all())
+    workouts = (Workout.query
+                .filter_by(log_date=d)
+                .order_by(Workout.created_at.desc())
+                .all())
+    start, end = _day_bounds(d)
+    completed_todos = (Todo.query
+                       .filter(
+                           Todo.done.is_(True),
+                           Todo.completed_at.isnot(None),
+                           Todo.completed_at >= start,
+                           Todo.completed_at < end,
+                       )
+                       .order_by(Todo.completed_at.desc())
+                       .all())
+    day_todos = (Todo.query
+                 .filter_by(bucket="today", for_date=d)
+                 .order_by(Todo.done.asc(), Todo.importance.desc())
+                 .all())
+
+    return jsonify({
+        "overview": overview,
+        "targets": target.to_dict(),
+        "entries": [e.to_dict() for e in entries],
+        "workouts": [w.to_dict() for w in workouts],
+        "completed_todos": [t.to_dict() for t in completed_todos],
+        "day_todos": [t.to_dict() for t in day_todos],
+    })
 
 
 # ── STEPS ──────────────────────────────────────────────────────────────────────
