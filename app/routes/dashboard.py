@@ -89,6 +89,8 @@ VALID_TODO_BUCKETS = ("today", "overall", "idea")
 
 @dashboard_bp.route("/api/todos", methods=["GET"])
 def list_todos():
+    """Open todos for the dashboard. Completed items are excluded by default
+    (use /api/todos/completed or include_done=1 for history/stats)."""
     include_done = request.args.get("include_done", "0") == "1"
     bucket = request.args.get("bucket", "overall")
     if bucket not in VALID_TODO_BUCKETS:
@@ -109,6 +111,84 @@ def list_todos():
             Todo.done.asc(), Todo.importance.desc(), Todo.effort.asc(), Todo.id.desc()
         ).all()
     return jsonify([t.to_dict() for t in todos])
+
+
+@dashboard_bp.route("/api/todos/completed", methods=["GET"])
+def list_completed_todos():
+    """Completed todos kept for statistics — not shown on the dashboard UI."""
+    bucket = request.args.get("bucket")  # optional filter
+    days = request.args.get("days")
+    since_date = parse_date(request.args.get("since"))
+    until_date = parse_date(request.args.get("until"))
+
+    q = Todo.query.filter_by(done=True)
+    if bucket:
+        if bucket not in VALID_TODO_BUCKETS:
+            return jsonify({"error": "Invalid bucket"}), 400
+        q = q.filter_by(bucket=bucket)
+
+    if days is not None:
+        try:
+            n = max(1, int(days))
+        except (TypeError, ValueError):
+            return jsonify({"error": "days must be an integer"}), 400
+        cutoff = datetime.utcnow() - timedelta(days=n)
+        q = q.filter(Todo.completed_at >= cutoff)
+    if since_date:
+        q = q.filter(Todo.completed_at >= datetime.combine(since_date, datetime.min.time()))
+    if until_date:
+        q = q.filter(Todo.completed_at < datetime.combine(until_date + timedelta(days=1), datetime.min.time()))
+
+    todos = q.order_by(Todo.completed_at.desc(), Todo.id.desc()).all()
+    return jsonify([t.to_dict() for t in todos])
+
+
+@dashboard_bp.route("/api/todos/stats", methods=["GET"])
+def todo_stats():
+    """Aggregate completion counts for later dashboards/charts."""
+    try:
+        days = max(1, int(request.args.get("days", 30)))
+    except (TypeError, ValueError):
+        return jsonify({"error": "days must be an integer"}), 400
+
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    completed = (Todo.query
+                 .filter(Todo.done.is_(True), Todo.completed_at.isnot(None),
+                         Todo.completed_at >= cutoff)
+                 .all())
+    open_counts = {
+        b: Todo.query.filter_by(bucket=b, done=False).count()
+        for b in VALID_TODO_BUCKETS
+    }
+
+    by_day = {}
+    by_bucket = {b: 0 for b in VALID_TODO_BUCKETS}
+    for t in completed:
+        by_bucket[t.bucket] = by_bucket.get(t.bucket, 0) + 1
+        day_key = (t.completed_at.date() if t.completed_at else date.today()).isoformat()
+        cell = by_day.setdefault(day_key, {b: 0 for b in VALID_TODO_BUCKETS})
+        cell[t.bucket] = cell.get(t.bucket, 0) + 1
+        cell["total"] = cell.get("total", 0) + 1
+
+    day_rows = []
+    for i in range(days):
+        d = (date.today() - timedelta(days=i)).isoformat()
+        cell = by_day.get(d, {})
+        day_rows.append({
+            "date": d,
+            "total": cell.get("total", 0),
+            "today": cell.get("today", 0),
+            "overall": cell.get("overall", 0),
+            "idea": cell.get("idea", 0),
+        })
+
+    return jsonify({
+        "days": days,
+        "completed_total": len(completed),
+        "completed_by_bucket": by_bucket,
+        "open_by_bucket": open_counts,
+        "by_day": day_rows,
+    })
 
 
 @dashboard_bp.route("/api/todos", methods=["POST"])
@@ -215,6 +295,7 @@ def toggle_todo(todo_id):
 
 @dashboard_bp.route("/api/todos/<int:todo_id>", methods=["DELETE"])
 def delete_todo(todo_id):
+    """Permanently remove a todo. Prefer marking done (toggle) to keep history for stats."""
     todo = Todo.query.get_or_404(todo_id)
     db.session.delete(todo)
     db.session.commit()
