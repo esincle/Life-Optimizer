@@ -4,8 +4,12 @@ from app.extensions import db
 from app.models import (
     Todo, TodoStep, NutritionTarget, NutritionEntry, DailySteps,
     Workout, Goal, GoalCommitment, Reminder, DailyLog, AppSettings,
-    VALID_GOAL_TYPES, VALID_METRIC_KEYS,
+    WeightLog, VALID_GOAL_TYPES, VALID_METRIC_KEYS,
 )
+
+KG_PER_LB = 0.45359237
+KCAL_PER_KG = 7700  # energy density used for adaptive TDEE estimate
+ADAPTIVE_MIN_DAYS = 14
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/today")
 
@@ -68,8 +72,95 @@ def parse_date(value, fallback=None):
         return fallback
 
 
+def weight_to_kg(weight, unit):
+    unit = (unit or "kg").lower()
+    return float(weight) if unit == "kg" else float(weight) * KG_PER_LB
+
+
+def kg_to_unit(kg, unit):
+    unit = (unit or "kg").lower()
+    return round(kg, 2) if unit == "kg" else round(kg / KG_PER_LB, 2)
+
+
+def get_display_weight_unit():
+    settings = get_or_create_app_settings()
+    return (settings.weight_unit or "kg").lower()
+
+
+def compute_adaptive_tdee(target=None):
+    """Estimate maintenance from ≥14 days with both weight + food logged.
+
+    adaptive ≈ avg_intake − (Δweight_kg × 7700 / days)
+    (assumed completion of truncated Phase 5 spec).
+    """
+    target = target or get_or_create_nutrition_target()
+    weights = WeightLog.query.order_by(WeightLog.log_date.asc()).all()
+    if not weights:
+        return {
+            "ready": False,
+            "paired_days": 0,
+            "required_days": ADAPTIVE_MIN_DAYS,
+            "adaptive_baseline": None,
+            "manual_baseline": target.tdee_baseline or 0,
+            "avg_intake": None,
+            "delta_kg": None,
+            "span_days": None,
+        }
+
+    # Days that have food logged
+    food_dates = {
+        row[0]
+        for row in db.session.query(NutritionEntry.log_date).distinct().all()
+    }
+    paired = [w for w in weights if w.log_date in food_dates]
+    paired_count = len(paired)
+    if paired_count < ADAPTIVE_MIN_DAYS:
+        return {
+            "ready": False,
+            "paired_days": paired_count,
+            "required_days": ADAPTIVE_MIN_DAYS,
+            "adaptive_baseline": None,
+            "manual_baseline": target.tdee_baseline or 0,
+            "avg_intake": None,
+            "delta_kg": None,
+            "span_days": None,
+        }
+
+    first, last = paired[0], paired[-1]
+    span_days = max(1, (last.log_date - first.log_date).days)
+    first_kg = weight_to_kg(first.weight, first.unit)
+    last_kg = weight_to_kg(last.weight, last.unit)
+    delta_kg = last_kg - first_kg
+
+    intakes = []
+    for w in paired:
+        day_cals = (
+            db.session.query(db.func.coalesce(db.func.sum(NutritionEntry.calories), 0))
+            .filter(NutritionEntry.log_date == w.log_date)
+            .scalar()
+        )
+        intakes.append(float(day_cals or 0))
+    avg_intake = sum(intakes) / len(intakes)
+    adaptive = round(avg_intake - (delta_kg * KCAL_PER_KG / span_days))
+    adaptive = max(1000, min(6000, adaptive))
+
+    return {
+        "ready": True,
+        "paired_days": paired_count,
+        "required_days": ADAPTIVE_MIN_DAYS,
+        "adaptive_baseline": adaptive,
+        "manual_baseline": target.tdee_baseline or 0,
+        "avg_intake": round(avg_intake),
+        "delta_kg": round(delta_kg, 2),
+        "span_days": span_days,
+    }
+
+
 def compute_tdee_for_day(day, target=None):
-    """TDEE = baseline + 45kcal/1k steps + workout calories burned."""
+    """TDEE = baseline + kcal/1k steps + workout calories burned.
+
+    Baseline is adaptive when enabled and ready; otherwise manual Design value.
+    """
     target = target or get_or_create_nutrition_target()
     steps_row = DailySteps.query.filter_by(log_date=day).first()
     step_count = steps_row.count if steps_row else 0
@@ -77,15 +168,67 @@ def compute_tdee_for_day(day, target=None):
     from_steps = round((step_count / 1000.0) * rate) if rate else 0
     workouts = Workout.query.filter_by(log_date=day).all()
     from_workouts = sum(w.calories_burned or 0 for w in workouts)
-    baseline = target.tdee_baseline or 0
+
+    adaptive = compute_adaptive_tdee(target)
+    using_adaptive = bool(target.use_adaptive_tdee) and adaptive["ready"]
+    baseline = (
+        adaptive["adaptive_baseline"]
+        if using_adaptive
+        else (target.tdee_baseline or 0)
+    )
     tdee = baseline + from_steps + from_workouts
     return {
         "tdee": tdee,
         "baseline": baseline,
+        "manual_baseline": target.tdee_baseline or 0,
         "from_steps": from_steps,
         "from_workouts": from_workouts,
         "steps": step_count,
         "steps_kcal_per_1k": rate,
+        "adaptive": adaptive,
+        "using_adaptive": using_adaptive,
+    }
+
+
+def weight_summary(as_of=None):
+    """Today's weight + 7-day MA + change vs prior week average."""
+    as_of = as_of or date.today()
+    unit = get_display_weight_unit()
+    today_row = WeightLog.query.filter_by(log_date=as_of).first()
+
+    def avg_for_range(start, end):
+        rows = (WeightLog.query
+                .filter(WeightLog.log_date >= start, WeightLog.log_date <= end)
+                .all())
+        if not rows:
+            return None, 0
+        kgs = [weight_to_kg(r.weight, r.unit) for r in rows]
+        return sum(kgs) / len(kgs), len(rows)
+
+    week_start = as_of - timedelta(days=6)
+    prev_end = week_start - timedelta(days=1)
+    prev_start = prev_end - timedelta(days=6)
+    ma7_kg, ma7_n = avg_for_range(week_start, as_of)
+    prev_kg, prev_n = avg_for_range(prev_start, prev_end)
+
+    today_display = None
+    if today_row:
+        today_display = kg_to_unit(weight_to_kg(today_row.weight, today_row.unit), unit)
+
+    ma7 = kg_to_unit(ma7_kg, unit) if ma7_kg is not None else None
+    prev = kg_to_unit(prev_kg, unit) if prev_kg is not None else None
+    delta = round(ma7 - prev, 2) if ma7 is not None and prev is not None else None
+
+    return {
+        "date": as_of.isoformat(),
+        "unit": unit,
+        "today": today_display,
+        "today_logged": today_row is not None,
+        "avg_7d": ma7,
+        "avg_7d_n": ma7_n,
+        "prev_week_avg": prev,
+        "prev_week_n": prev_n,
+        "vs_prev_week": delta,
     }
 
 
@@ -605,7 +748,10 @@ def delete_todo_step(step_id):
 
 @dashboard_bp.route("/api/nutrition/targets", methods=["GET"])
 def get_nutrition_targets():
-    return jsonify(get_or_create_nutrition_target().to_dict())
+    target = get_or_create_nutrition_target()
+    payload = target.to_dict()
+    payload["adaptive"] = compute_adaptive_tdee(target)
+    return jsonify(payload)
 
 
 @dashboard_bp.route("/api/nutrition/targets", methods=["PUT"])
@@ -625,8 +771,12 @@ def update_nutrition_targets():
         target.protein_goal = _parse_optional_goal(data.get("protein_goal"))
     if "steps_goal" in data:
         target.steps_goal = _parse_optional_goal(data.get("steps_goal"))
+    if "use_adaptive_tdee" in data:
+        target.use_adaptive_tdee = bool(data.get("use_adaptive_tdee"))
     db.session.commit()
-    return jsonify(target.to_dict())
+    payload = target.to_dict()
+    payload["adaptive"] = compute_adaptive_tdee(target)
+    return jsonify(payload)
 
 
 @dashboard_bp.route("/api/nutrition/today", methods=["GET"])
@@ -645,12 +795,13 @@ def nutrition_today():
     deficit = (tdee_info["tdee"] - calories) if food_logged else None
     return jsonify({
         "date": today.isoformat(),
-        "targets": target.to_dict(),
+        "targets": {**target.to_dict(), "adaptive": tdee_info.get("adaptive")},
         "totals": {"calories": calories, "protein": protein},
         "tdee": tdee_info,
         "food_logged": food_logged,
         "deficit": deficit,  # None if calories not tracked; else + deficit / − surplus
         "entries": [e.to_dict() for e in entries],
+        "weight": weight_summary(today),
     })
 
 
@@ -939,6 +1090,50 @@ def history_day(date_str):
     })
 
 
+# ── WEIGHT ─────────────────────────────────────────────────────────────────────
+
+@dashboard_bp.route("/api/weight", methods=["GET"])
+def get_weight():
+    day = parse_date(request.args.get("date"), date.today())
+    return jsonify(weight_summary(day))
+
+
+@dashboard_bp.route("/api/weight", methods=["PUT"])
+def put_weight():
+    data = request.get_json() or {}
+    day = parse_date(data.get("log_date"), date.today())
+    unit = (data.get("unit") or get_display_weight_unit() or "kg").lower()
+    if unit not in ("kg", "lb"):
+        return jsonify({"error": "unit must be kg or lb"}), 400
+    try:
+        weight = float(data.get("weight"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "weight must be a number"}), 400
+    if weight <= 0 or weight > 1000:
+        return jsonify({"error": "weight out of range"}), 400
+
+    row = WeightLog.query.filter_by(log_date=day).first()
+    if not row:
+        row = WeightLog(log_date=day, weight=weight, unit=unit)
+        db.session.add(row)
+    else:
+        row.weight = weight
+        row.unit = unit
+    db.session.commit()
+    return jsonify(weight_summary(day))
+
+
+@dashboard_bp.route("/api/weight", methods=["DELETE"])
+def delete_weight():
+    data = request.get_json() or {}
+    day = parse_date(data.get("log_date") or request.args.get("date"), date.today())
+    row = WeightLog.query.filter_by(log_date=day).first()
+    if row:
+        db.session.delete(row)
+        db.session.commit()
+    return jsonify(weight_summary(day))
+
+
 # ── STEPS ──────────────────────────────────────────────────────────────────────
 
 @dashboard_bp.route("/api/steps/today", methods=["GET"])
@@ -1173,11 +1368,16 @@ def _metric_current(metric_key, week_start=None):
     target = get_or_create_nutrition_target()
 
     if metric_key == "weight":
-        return None, {
-            "available": False,
-            "unit": None,
-            "note": "Weight logging arrives in Phase 5",
-        }
+        unit = get_display_weight_unit()
+        latest = WeightLog.query.order_by(WeightLog.log_date.desc()).first()
+        if not latest:
+            return None, {
+                "available": False,
+                "unit": unit,
+                "note": "No weight logged yet",
+            }
+        current = kg_to_unit(weight_to_kg(latest.weight, latest.unit), unit)
+        return current, {"available": True, "unit": unit}
 
     if metric_key == "protein_days":
         goal = target.protein_goal

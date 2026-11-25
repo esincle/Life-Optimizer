@@ -39,6 +39,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("steps-count")?.addEventListener("keydown", e => {
         if (e.key === "Enter") { e.preventDefault(); saveSteps(); }
     });
+    document.getElementById("weight-input")?.addEventListener("keydown", e => {
+        if (e.key === "Enter") { e.preventDefault(); saveWeight(); }
+    });
 });
 
 async function loadAppSettings() {
@@ -1201,8 +1204,10 @@ async function loadNutrition() {
             food_logged ? `TDEE ${tdee.tdee}` : "Log food to track remaining";
         document.getElementById("deficit-line").className = "deficit-line";
     }
+    const adaptNote = tdee.using_adaptive ? "adaptive" : "manual";
     document.getElementById("tdee-breakdown").textContent =
-        `TDEE ${tdee.tdee} = ${tdee.baseline} + ${tdee.from_steps} steps + ${tdee.from_workouts} workouts`;
+        `TDEE ${tdee.tdee} = ${tdee.baseline} (${adaptNote}) + ${tdee.from_steps} steps + ${tdee.from_workouts} workouts`;
+    renderWeight(today.weight);
 
     const proLabel = document.getElementById("pro-label");
     if (!proteinSet) {
@@ -1276,6 +1281,63 @@ async function addFood() {
     } catch (e) {
         showToast(e.message, "error");
     }
+}
+
+function renderWeight(w) {
+    if (!w) return;
+    const unit = w.unit || "kg";
+    const unitLabel = document.getElementById("weight-unit-label");
+    if (unitLabel) unitLabel.textContent = unit;
+    const todayEl = document.getElementById("weight-today");
+    if (todayEl) {
+        todayEl.textContent = w.today != null ? `${w.today} ${unit}` : "—";
+    }
+    const meta = document.getElementById("weight-meta");
+    if (meta) {
+        const parts = [];
+        if (w.avg_7d != null) {
+            parts.push(`7-day avg ${w.avg_7d} ${unit} (n=${w.avg_7d_n})`);
+        } else {
+            parts.push("7-day avg —");
+        }
+        if (w.vs_prev_week != null) {
+            const sign = w.vs_prev_week > 0 ? "+" : "";
+            parts.push(`vs last week ${sign}${w.vs_prev_week}`);
+        }
+        meta.textContent = parts.join(" · ");
+    }
+    const input = document.getElementById("weight-input");
+    if (input && w.today != null && document.activeElement !== input) {
+        input.value = w.today;
+    }
+}
+
+function focusWeightInput() {
+    const section = document.getElementById("section-body");
+    section?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const input = document.getElementById("weight-input");
+    input?.focus();
+    input?.select();
+}
+
+async function saveWeight() {
+    const raw = document.getElementById("weight-input")?.value;
+    if (raw === "" || raw == null) return showToast("Enter today’s weight", "error");
+    const weight = Number(raw);
+    if (!Number.isFinite(weight) || weight <= 0) return showToast("Invalid weight", "error");
+    try {
+        const unit = document.getElementById("weight-unit-label")?.textContent || "kg";
+        await api.put("/today/api/weight", { weight, unit, log_date: localISODate() });
+        await loadNutrition();
+        showToast("Weight saved", "success");
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+function isWeightRoutineStep(title) {
+    const t = (title || "").toLowerCase();
+    return t.includes("weight") || t.includes("toilet");
 }
 
 async function deleteFood(id) {
@@ -1488,6 +1550,10 @@ async function toggleRoutineItem(completionId) {
                 routine,
                 (data.completions || []).filter(c => c.routine === routine),
             );
+        }
+        // Ticking Toilet + Weight opens the weight input
+        if (updated.completed && isWeightRoutineStep(updated.step_title)) {
+            focusWeightInput();
         }
     } catch (e) {
         showToast(e.message, "error");

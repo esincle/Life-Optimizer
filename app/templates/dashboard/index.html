@@ -168,7 +168,7 @@
                                     <option value="protein_days">Protein days / week</option>
                                     <option value="steps_days">Steps days / week</option>
                                     <option value="routine_pct">Routine completion %</option>
-                                    <option value="weight">Weight (Phase 5)</option>
+                                    <option value="weight">Weight</option>
                                 </select>
                             </div>
                             <div class="field">
@@ -329,6 +329,16 @@
                     <div class="add-form-row" style="margin-top:var(--space-sm)">
                         <input type="number" id="steps-count" placeholder="Steps today" min="0" step="100">
                         <button class="btn btn-primary btn-sm" type="button" onclick="saveSteps()">Save</button>
+                    </div>
+                </div>
+                <div class="body-metric" id="weight-metric">
+                    <div class="week-stat-label">Weight</div>
+                    <div class="week-stat-value" id="weight-today">—</div>
+                    <div class="week-stat-meta" id="weight-meta">7-day avg —</div>
+                    <div class="add-form-row" style="margin-top:var(--space-sm)">
+                        <input type="number" id="weight-input" placeholder="Today" min="0" step="0.1" style="max-width:90px">
+                        <span class="text-muted" id="weight-unit-label">kg</span>
+                        <button class="btn btn-primary btn-sm" type="button" onclick="saveWeight()">Save</button>
                     </div>
                 </div>
             </div>

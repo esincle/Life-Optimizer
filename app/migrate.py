@@ -237,3 +237,22 @@ def migrate_schema():
                   AND description IS NOT NULL
                   AND description != ''
             """))
+
+    # Phase 5: weight unit + adaptive TDEE flag
+    if "app_settings" in tables:
+        cols = {c["name"] for c in inspect(engine).get_columns("app_settings")}
+        with engine.begin() as conn:
+            if "weight_unit" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE app_settings "
+                    "ADD COLUMN weight_unit VARCHAR(5) NOT NULL DEFAULT 'kg'"
+                ))
+
+    if "nutrition_targets" in tables:
+        cols = {c["name"] for c in inspect(engine).get_columns("nutrition_targets")}
+        with engine.begin() as conn:
+            if "use_adaptive_tdee" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE nutrition_targets "
+                    "ADD COLUMN use_adaptive_tdee BOOLEAN NOT NULL DEFAULT 0"
+                ))

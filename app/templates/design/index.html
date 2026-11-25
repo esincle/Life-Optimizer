@@ -69,7 +69,21 @@
                     <label for="design-steps-goal">Daily steps goal</label>
                     <input type="number" id="design-steps-goal" min="1" step="500" placeholder="e.g. 10000">
                 </div>
+                <div class="field">
+                    <label for="design-weight-unit">Weight unit</label>
+                    <select id="design-weight-unit">
+                        <option value="kg">kg</option>
+                        <option value="lb">lb</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label class="checkbox-label" style="display:flex;align-items:center;gap:8px;margin-top:1.6rem">
+                        <input type="checkbox" id="design-adaptive-tdee">
+                        Use adaptive TDEE when ready (≥14 days)
+                    </label>
+                </div>
             </div>
+            <p class="text-muted" id="design-adaptive-hint" style="margin-bottom:var(--space-sm);font-size:var(--font-size-sm)">Adaptive TDEE…</p>
             <p class="text-muted" id="design-goals-hint" style="margin-bottom:var(--space-md);font-size:var(--font-size-sm)">Loading saved goals…</p>
             <button class="btn btn-primary btn-sm" type="button" onclick="saveNutritionGoals()">Save</button>
         </div>

@@ -252,6 +252,8 @@ class NutritionTarget(db.Model):
     # NULL = not set in Design (do not invent a default on Today)
     protein_goal         = db.Column(db.Integer, nullable=True)
     steps_goal           = db.Column(db.Integer, nullable=True)
+    # Phase 5: when True and ≥14 paired weight+food days, use estimated baseline
+    use_adaptive_tdee    = db.Column(db.Boolean, nullable=False, default=False)
     updated_at           = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self):
@@ -261,6 +263,27 @@ class NutritionTarget(db.Model):
             "steps_kcal_per_1k": self.steps_kcal_per_1k,
             "protein_goal": self.protein_goal,
             "steps_goal": self.steps_goal,
+            "use_adaptive_tdee": bool(self.use_adaptive_tdee),
+        }
+
+
+class WeightLog(db.Model):
+    """One weight entry per calendar day."""
+    __tablename__ = "weight_logs"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    log_date   = db.Column(db.Date, nullable=False, unique=True, index=True)
+    weight     = db.Column(db.Float, nullable=False)
+    unit       = db.Column(db.String(5), nullable=False, default="kg")  # kg | lb
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "log_date": self.log_date.isoformat(),
+            "weight": self.weight,
+            "unit": self.unit,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
 
@@ -421,6 +444,7 @@ class AppSettings(db.Model):
     evening_from            = db.Column(db.String(5), nullable=False, default="18:00")  # HH:MM
     todo_cap                = db.Column(db.Integer, nullable=False, default=3)
     default_available_hours = db.Column(db.Float, nullable=False, default=4.0)
+    weight_unit             = db.Column(db.String(5), nullable=False, default="kg")  # kg | lb
     updated_at              = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self):
@@ -433,6 +457,7 @@ class AppSettings(db.Model):
                 self.default_available_hours
                 if self.default_available_hours is not None else 4.0
             ),
+            "weight_unit": self.weight_unit or "kg",
         }
 
 

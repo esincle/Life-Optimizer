@@ -49,7 +49,10 @@ async function saveDayLoopSettings() {
 
 async function loadNutritionGoals() {
     try {
-        const t = await api.get("/today/api/nutrition/targets");
+        const [t, settings] = await Promise.all([
+            api.get("/today/api/nutrition/targets"),
+            api.get("/design/api/settings"),
+        ]);
         const baseline = document.getElementById("design-tdee-baseline");
         const stepsKcal = document.getElementById("design-steps-kcal");
         const proGoal = document.getElementById("design-pro-goal");
@@ -62,11 +65,29 @@ async function loadNutritionGoals() {
         // Show saved goals; leave blank when unset (null)
         proGoal.value = t.protein_goal != null ? t.protein_goal : "";
         stepsGoal.value = t.steps_goal != null ? t.steps_goal : "";
+        const unitEl = document.getElementById("design-weight-unit");
+        if (unitEl) unitEl.value = settings.weight_unit || "kg";
+        const adaptEl = document.getElementById("design-adaptive-tdee");
+        if (adaptEl) adaptEl.checked = !!t.use_adaptive_tdee;
+        const adaptHint = document.getElementById("design-adaptive-hint");
+        if (adaptHint) {
+            const a = t.adaptive || {};
+            if (a.ready) {
+                adaptHint.textContent =
+                    `Adaptive ready: ~${a.adaptive_baseline} kcal ` +
+                    `(${a.paired_days} paired days · Δ${a.delta_kg} kg over ${a.span_days}d · avg intake ${a.avg_intake})`;
+            } else {
+                adaptHint.textContent =
+                    `Adaptive needs ${a.required_days || 14} days with both weight + food logged ` +
+                    `(have ${a.paired_days || 0}).`;
+            }
+        }
         const hint = document.getElementById("design-goals-hint");
         if (hint) {
             const bits = [];
             bits.push(t.protein_goal != null ? `Protein ${t.protein_goal} g` : "Protein unset");
             bits.push(t.steps_goal != null ? `Steps ${t.steps_goal.toLocaleString()}` : "Steps unset");
+            bits.push(`Weight ${(settings.weight_unit || "kg")}`);
             hint.textContent = `Saved: ${bits.join(" · ")}`;
         }
     } catch (e) {
@@ -81,13 +102,19 @@ async function saveNutritionGoals() {
     const stepsRaw = document.getElementById("design-steps-goal").value.trim();
     const protein_goal = proRaw === "" ? null : Number(proRaw);
     const steps_goal = stepsRaw === "" ? null : Number(stepsRaw);
+    const use_adaptive_tdee = !!document.getElementById("design-adaptive-tdee")?.checked;
+    const weight_unit = document.getElementById("design-weight-unit")?.value || "kg";
     try {
-        await api.put("/today/api/nutrition/targets", {
-            tdee_baseline,
-            steps_kcal_per_1k,
-            protein_goal,
-            steps_goal,
-        });
+        await Promise.all([
+            api.put("/today/api/nutrition/targets", {
+                tdee_baseline,
+                steps_kcal_per_1k,
+                protein_goal,
+                steps_goal,
+                use_adaptive_tdee,
+            }),
+            api.put("/design/api/settings", { weight_unit }),
+        ]);
         showToast("Nutrition settings saved", "success");
         await loadNutritionGoals();
     } catch (e) {

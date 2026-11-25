@@ -56,6 +56,11 @@ def update_settings():
             row.default_available_hours = max(0.5, min(24, float(data["default_available_hours"])))
         except (TypeError, ValueError):
             return jsonify({"error": "default_available_hours must be a number"}), 400
+    if "weight_unit" in data:
+        unit = (data.get("weight_unit") or "").strip().lower()
+        if unit not in ("kg", "lb"):
+            return jsonify({"error": "weight_unit must be kg or lb"}), 400
+        row.weight_unit = unit
     db.session.commit()
     return jsonify(row.to_dict())
 
