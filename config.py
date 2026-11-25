@@ -1,8 +1,19 @@
 import os
 
 
+def _database_uri():
+    url = (os.environ.get("DATABASE_URL") or "").strip()
+    if not url:
+        return "sqlite:///life_optimizer.db"
+    # Some hosts give postgres://; SQLAlchemy wants postgresql://
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
+    return url
+
+
 class Config:
-    SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-in-prod")
+    # Local fallback only — set SECRET_KEY in the published app’s secrets
+    SECRET_KEY = os.environ.get("SECRET_KEY") or "dev-local-only"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 
@@ -13,6 +24,4 @@ class DevelopmentConfig(Config):
 
 class ProductionConfig(Config):
     DEBUG = False
-    SQLALCHEMY_DATABASE_URI = os.environ.get(
-        "DATABASE_URL", "sqlite:///life_optimizer.db"
-    )
+    SQLALCHEMY_DATABASE_URI = _database_uri()

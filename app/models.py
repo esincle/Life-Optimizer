@@ -8,7 +8,7 @@ class RoutineStep(db.Model):
     __tablename__ = "routine_steps"
 
     id               = db.Column(db.Integer, primary_key=True)
-    routine          = db.Column(db.String(10), nullable=False)  # "morning" | "evening"
+    routine          = db.Column(db.String(10), nullable=False)  # "morning" | "evening" | "daily"
     title            = db.Column(db.String(200), nullable=False)
     description      = db.Column(db.Text, nullable=True)
     duration_minutes = db.Column(db.Integer, nullable=True)
@@ -78,10 +78,32 @@ class JournalPrompt(db.Model):
 class DailyLog(db.Model):
     __tablename__ = "daily_logs"
 
-    id         = db.Column(db.Integer, primary_key=True)
-    log_date   = db.Column(db.Date, nullable=False, unique=True, index=True)
-    notes      = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    id           = db.Column(db.Integer, primary_key=True)
+    log_date     = db.Column(db.Date, nullable=False, unique=True, index=True)
+    notes        = db.Column(db.Text, nullable=True)
+    # Set by evening shutdown (Phase 3); week stats only count complete days
+    is_complete      = db.Column(db.Boolean, nullable=False, default=False)
+    completed_at     = db.Column(db.DateTime, nullable=True)
+    available_hours  = db.Column(db.Float, nullable=True)  # overrides Design default for that day
+    shutdown_step    = db.Column(db.Integer, nullable=True)  # 0–4 progress through evening flow
+    morning_seen     = db.Column(db.Boolean, nullable=False, default=False)
+    # Phase 6 — daily check-in pulse
+    checkin_mood     = db.Column(db.Integer, nullable=True)   # 1–5
+    checkin_energy   = db.Column(db.Integer, nullable=True)   # 1–5
+    checkin_note     = db.Column(db.Text, nullable=True)
+    checkin_at       = db.Column(db.DateTime, nullable=True)
+    created_at       = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def checkin_to_dict(self):
+        return {
+            "mood": self.checkin_mood,
+            "energy": self.checkin_energy,
+            "note": self.checkin_note,
+            "checkin_at": self.checkin_at.isoformat() if self.checkin_at else None,
+            "saved": self.checkin_at is not None or self.checkin_mood is not None
+                     or self.checkin_energy is not None
+                     or bool(self.checkin_note),
+        }
 
     completions     = db.relationship("RoutineCompletion", back_populates="daily_log",
                                       cascade="all, delete-orphan")
@@ -155,26 +177,80 @@ class JournalResponse(db.Model):
 class Todo(db.Model):
     __tablename__ = "todos"
 
-    id           = db.Column(db.Integer, primary_key=True)
-    title        = db.Column(db.String(300), nullable=False)
-    notes        = db.Column(db.Text, nullable=True)
-    done         = db.Column(db.Boolean, default=False, nullable=False)
-    importance   = db.Column(db.Integer, nullable=False, default=3)  # 1–5
-    effort       = db.Column(db.Integer, nullable=False, default=3)  # 1–5
-    due_date     = db.Column(db.Date, nullable=True)
-    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
-    completed_at = db.Column(db.DateTime, nullable=True)
+    id              = db.Column(db.Integer, primary_key=True)
+    title           = db.Column(db.String(300), nullable=False)
+    notes           = db.Column(db.Text, nullable=True)
+    done            = db.Column(db.Boolean, default=False, nullable=False)
+    importance      = db.Column(db.Integer, nullable=False, default=2)  # 1–3 Low/Med/High
+    effort          = db.Column(db.Integer, nullable=False, default=2)  # 1–3 Low/Med/High
+    estimate_minutes = db.Column(db.Integer, nullable=True)  # 15/30/60/120/240
+    rollover_count  = db.Column(db.Integer, nullable=False, default=0)
+    manual_position = db.Column(db.Integer, nullable=True)
+    manual_sort     = db.Column(db.Boolean, nullable=False, default=False)
+    due_date        = db.Column(db.Date, nullable=True)
+    # today = day list · overall = longer backlog · idea = idea inbox
+    bucket          = db.Column(db.String(20), nullable=False, default="overall", index=True)
+    for_date        = db.Column(db.Date, nullable=True, index=True)  # used when bucket=today
+    goal_id         = db.Column(db.Integer, db.ForeignKey("goals.id"), nullable=True, index=True)
+    created_at      = db.Column(db.DateTime, default=datetime.utcnow)
+    completed_at    = db.Column(db.DateTime, nullable=True)
 
-    def to_dict(self):
-        return {
+    steps = db.relationship(
+        "TodoStep",
+        back_populates="todo",
+        cascade="all, delete-orphan",
+        order_by="TodoStep.position",
+    )
+    goal = db.relationship("Goal", back_populates="todos")
+
+    def to_dict(self, include_steps=True):
+        data = {
             "id": self.id,
             "title": self.title,
             "notes": self.notes,
             "done": self.done,
             "importance": self.importance,
             "effort": self.effort,
+            "estimate_minutes": self.estimate_minutes,
+            "rollover_count": self.rollover_count or 0,
+            "manual_position": self.manual_position,
+            "manual_sort": bool(self.manual_sort),
             "due_date": self.due_date.isoformat() if self.due_date else None,
+            "bucket": self.bucket,
+            "for_date": self.for_date.isoformat() if self.for_date else None,
+            "goal_id": self.goal_id,
+            "goal_title": self.goal.title if self.goal else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "steps_done": sum(1 for s in self.steps if s.done),
+            "steps_total": len(self.steps),
+        }
+        if include_steps:
+            data["steps"] = [s.to_dict() for s in self.steps]
+        return data
+
+
+class TodoStep(db.Model):
+    """Checklist steps under a big todo (e.g. Tax return → print forms)."""
+    __tablename__ = "todo_steps"
+
+    id           = db.Column(db.Integer, primary_key=True)
+    todo_id      = db.Column(db.Integer, db.ForeignKey("todos.id"), nullable=False, index=True)
+    title        = db.Column(db.String(300), nullable=False)
+    done         = db.Column(db.Boolean, default=False, nullable=False)
+    position     = db.Column(db.Integer, nullable=False, default=0)
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime, nullable=True)
+
+    todo = db.relationship("Todo", back_populates="steps")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "todo_id": self.todo_id,
+            "title": self.title,
+            "done": self.done,
+            "position": self.position,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
         }
 
@@ -182,19 +258,67 @@ class Todo(db.Model):
 # ── NUTRITION ──────────────────────────────────────────────────────────────────
 
 class NutritionTarget(db.Model):
-    """Singleton-style row: daily calorie and protein goals (adjustable)."""
+    """Singleton: TDEE baseline + step burn rate, protein/steps goals."""
     __tablename__ = "nutrition_targets"
 
-    id            = db.Column(db.Integer, primary_key=True)
-    calorie_goal  = db.Column(db.Integer, nullable=False, default=2200)
-    protein_goal  = db.Column(db.Integer, nullable=False, default=150)
-    updated_at    = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    id                   = db.Column(db.Integer, primary_key=True)
+    # Dynamic TDEE = baseline + (steps/1000)*steps_kcal_per_1k + workout burn
+    tdee_baseline        = db.Column(db.Integer, nullable=False, default=2050)
+    steps_kcal_per_1k    = db.Column(db.Integer, nullable=False, default=45)
+    # NULL = not set in Design (do not invent a default on Today)
+    protein_goal         = db.Column(db.Integer, nullable=True)
+    steps_goal           = db.Column(db.Integer, nullable=True)
+    # When True and BMR inputs ready, use Mifflin–St Jeor BMR as TDEE baseline
+    use_adaptive_tdee    = db.Column(db.Boolean, nullable=False, default=False)
+    updated_at           = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self):
         return {
             "id": self.id,
-            "calorie_goal": self.calorie_goal,
+            "tdee_baseline": self.tdee_baseline,
+            "steps_kcal_per_1k": self.steps_kcal_per_1k,
             "protein_goal": self.protein_goal,
+            "steps_goal": self.steps_goal,
+            "use_adaptive_tdee": bool(self.use_adaptive_tdee),
+            "use_bmr_baseline": bool(self.use_adaptive_tdee),  # alias for UI
+        }
+
+
+class WeightLog(db.Model):
+    """One weight entry per calendar day."""
+    __tablename__ = "weight_logs"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    log_date   = db.Column(db.Date, nullable=False, unique=True, index=True)
+    weight     = db.Column(db.Float, nullable=False)
+    unit       = db.Column(db.String(5), nullable=False, default="kg")  # kg | lb
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "log_date": self.log_date.isoformat(),
+            "weight": self.weight,
+            "unit": self.unit,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class DailySteps(db.Model):
+    """One step-count entry per calendar day."""
+    __tablename__ = "daily_steps"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    log_date   = db.Column(db.Date, nullable=False, unique=True, index=True)
+    count      = db.Column(db.Integer, nullable=False, default=0)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "log_date": self.log_date.isoformat(),
+            "count": self.count,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
 
@@ -226,9 +350,10 @@ class Workout(db.Model):
 
     id               = db.Column(db.Integer, primary_key=True)
     log_date         = db.Column(db.Date, nullable=False, index=True)
-    kind             = db.Column(db.String(20), nullable=False)  # "zone2" | "lifting"
+    kind             = db.Column(db.String(20), nullable=False)  # zone2 | full | upper | lower
     title            = db.Column(db.String(200), nullable=True)
     duration_minutes = db.Column(db.Integer, nullable=True)
+    calories_burned  = db.Column(db.Integer, nullable=True)  # optional; adds to daily TDEE
     notes            = db.Column(db.Text, nullable=True)
     created_at       = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -239,6 +364,7 @@ class Workout(db.Model):
             "kind": self.kind,
             "title": self.title,
             "duration_minutes": self.duration_minutes,
+            "calories_burned": self.calories_burned,
             "notes": self.notes,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
@@ -246,27 +372,116 @@ class Workout(db.Model):
 
 # ── NEAR-TERM GOALS ────────────────────────────────────────────────────────────
 
+VALID_GOAL_TYPES = ("project", "metric")
+VALID_METRIC_KEYS = (
+    "weight",
+    "protein_days",
+    "steps_days",
+    "workouts_week",
+    "routine_pct",
+)
+
+
 class Goal(db.Model):
     __tablename__ = "goals"
 
-    id          = db.Column(db.Integer, primary_key=True)
-    title       = db.Column(db.String(300), nullable=False)
-    description = db.Column(db.Text, nullable=True)
-    target_date = db.Column(db.Date, nullable=True)
-    status      = db.Column(db.String(20), nullable=False, default="active")  # active|done|dropped
-    created_at  = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at  = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    completed_at = db.Column(db.DateTime, nullable=True)
+    id            = db.Column(db.Integer, primary_key=True)
+    title         = db.Column(db.String(300), nullable=False)
+    description   = db.Column(db.Text, nullable=True)  # legacy notes; prefer why
+    why           = db.Column(db.Text, nullable=True)
+    target_date   = db.Column(db.Date, nullable=True)
+    status        = db.Column(db.String(20), nullable=False, default="active")  # active|done|dropped
+    goal_type     = db.Column(db.String(20), nullable=False, default="project")  # project|metric
+    metric_key    = db.Column(db.String(40), nullable=True)
+    metric_target = db.Column(db.Float, nullable=True)
+    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at    = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    completed_at  = db.Column(db.DateTime, nullable=True)
+
+    commitments = db.relationship(
+        "GoalCommitment",
+        back_populates="goal",
+        cascade="all, delete-orphan",
+        order_by="GoalCommitment.id",
+    )
+    todos = db.relationship("Todo", back_populates="goal")
+
+    def to_dict(self, include_extras=False):
+        data = {
+            "id": self.id,
+            "title": self.title,
+            "description": self.description,
+            "why": self.why or self.description,
+            "target_date": self.target_date.isoformat() if self.target_date else None,
+            "status": self.status,
+            "goal_type": self.goal_type or "project",
+            "metric_key": self.metric_key,
+            "metric_target": self.metric_target,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }
+        return data
+
+
+class GoalCommitment(db.Model):
+    """Weekly commitment line under a goal (ISO week starting Monday)."""
+    __tablename__ = "goal_commitments"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    goal_id    = db.Column(db.Integer, db.ForeignKey("goals.id"), nullable=False, index=True)
+    week_start = db.Column(db.Date, nullable=False, index=True)
+    text       = db.Column(db.String(400), nullable=False)
+    done       = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    goal = db.relationship("Goal", back_populates="commitments")
 
     def to_dict(self):
         return {
             "id": self.id,
-            "title": self.title,
-            "description": self.description,
-            "target_date": self.target_date.isoformat() if self.target_date else None,
-            "status": self.status,
+            "goal_id": self.goal_id,
+            "week_start": self.week_start.isoformat(),
+            "text": self.text,
+            "done": self.done,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+# ── APP SETTINGS (Design / singleton) ──────────────────────────────────────────
+
+class AppSettings(db.Model):
+    """Singleton row for Design-configurable day loop times and caps."""
+    __tablename__ = "app_settings"
+
+    id                      = db.Column(db.Integer, primary_key=True)
+    morning_until           = db.Column(db.String(5), nullable=False, default="12:00")  # HH:MM
+    evening_from            = db.Column(db.String(5), nullable=False, default="18:00")  # HH:MM
+    todo_cap                = db.Column(db.Integer, nullable=False, default=3)
+    default_available_hours = db.Column(db.Float, nullable=False, default=4.0)
+    weight_unit             = db.Column(db.String(5), nullable=False, default="kg")  # kg | lb
+    # Mifflin–St Jeor BMR inputs (Phase 5)
+    height_cm               = db.Column(db.Float, nullable=True)
+    age_years               = db.Column(db.Integer, nullable=True)
+    sex                     = db.Column(db.String(10), nullable=False, default="male")  # male | female
+    updated_at              = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "morning_until": self.morning_until or "12:00",
+            "evening_from": self.evening_from or "18:00",
+            "todo_cap": self.todo_cap if self.todo_cap is not None else 3,
+            "default_available_hours": (
+                self.default_available_hours
+                if self.default_available_hours is not None else 4.0
+            ),
+            "weight_unit": self.weight_unit or "kg",
+            "height_cm": self.height_cm,
+            "age_years": self.age_years,
+            "sex": self.sex or "male",
         }
 
 

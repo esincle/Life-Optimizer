@@ -2,108 +2,372 @@
 {% block title %}Today — Life Optimizer{% endblock %}
 
 {% block content %}
-<div class="page">
-    <div class="page-header today-header">
-        <div>
-            <p class="brand-mark">Life Optimizer</p>
+<div class="page page-today">
+    <header class="today-hero">
+        <div class="today-hero-copy">
+            <p class="brand-mark">Life <span>Optimizer</span></p>
             <h1 class="page-title">Today</h1>
             <p class="page-subtitle" id="today-date">Loading…</p>
         </div>
         <div class="today-header-actions">
+            <a class="btn btn-primary btn-sm hidden" id="btn-start-shutdown" href="/review/evening">Start shutdown</a>
+            <span class="badge hidden" id="day-complete-badge">Day complete</span>
             <button class="btn btn-secondary btn-sm" id="btn-enable-push" type="button">Enable computer reminders</button>
             <span class="push-status text-muted" id="push-status"></span>
         </div>
+    </header>
+
+    <div class="morning-brief hidden" id="morning-brief" role="status">
+        <div class="morning-brief-body">
+            <p class="morning-brief-title">Morning brief</p>
+            <p class="morning-brief-text" id="morning-brief-text"></p>
+        </div>
+        <button class="btn btn-ghost btn-sm" type="button" id="morning-brief-dismiss" onclick="dismissMorningBrief()">Dismiss</button>
     </div>
 
-    <div class="today-grid">
-        <!-- Todos -->
-        <section class="card today-section" id="section-todos">
+    <div class="today-stack">
+        <!-- 1. Top priorities -->
+        <section class="card today-section" id="section-priorities">
             <div class="card-header">
-                <h3 class="card-title">To-dos</h3>
-                <button class="btn btn-secondary btn-sm" type="button" onclick="toggleTodoForm()">+ Add</button>
+                <div>
+                    <p class="section-kicker">Priorities</p>
+                    <h3 class="card-title" id="todo-bucket-title">Today’s to-dos</h3>
+                </div>
+                <div class="flex gap-sm items-center">
+                    <button class="btn btn-ghost btn-sm hidden" type="button" id="matrix-toggle" onclick="toggleMatrixView()">Matrix</button>
+                    <button class="btn btn-secondary btn-sm" type="button" onclick="toggleTodoForm()">+ Add</button>
+                </div>
             </div>
+            <p class="bucket-hint text-muted" id="bucket-hint">Tasks for today — tick them off as you go.</p>
+            <div class="plan-time-bar" id="plan-time-bar">
+                <span id="plan-time-label">Planned: — / Available: —</span>
+                <span class="plan-time-warn hidden" id="plan-time-warn">Over available time</span>
+                <label class="plan-avail-edit text-muted">
+                    Available
+                    <input type="number" id="available-hours-input" min="0.5" max="24" step="0.5" style="max-width:70px">
+                    <button class="btn btn-ghost btn-sm" type="button" onclick="saveAvailableHours()">Set</button>
+                </label>
+            </div>
+
             <div class="add-form hidden" id="todo-form">
                 <div class="field">
-                    <label for="todo-title">Task</label>
-                    <input type="text" id="todo-title" placeholder="What needs doing?">
+                    <label for="todo-title" id="todo-title-label">Task</label>
+                    <input type="text" id="todo-title" placeholder="What needs doing today?">
                 </div>
-                <div class="form-grid-2">
+                <div class="field" id="todo-step-field">
+                    <label for="todo-first-step">First step (optional)</label>
+                    <input type="text" id="todo-first-step" placeholder="e.g. Print tax return">
+                </div>
+                <div class="field hidden" id="todo-notes-field">
+                    <label for="todo-notes">Notes (optional)</label>
+                    <input type="text" id="todo-notes" placeholder="Capture the idea…">
+                </div>
+                <div class="form-grid-2" id="todo-metrics-fields">
                     <div class="field">
-                        <label for="todo-importance">Importance <span id="todo-imp-val">3</span>/5</label>
-                        <input type="range" id="todo-importance" min="1" max="5" value="3" oninput="document.getElementById('todo-imp-val').textContent=this.value">
+                        <label>Importance</label>
+                        <div class="seg-control" id="todo-importance-seg" data-value="2">
+                            <button type="button" data-v="1" onclick="setSeg('todo-importance-seg',1)">Low</button>
+                            <button type="button" data-v="2" class="active" onclick="setSeg('todo-importance-seg',2)">Med</button>
+                            <button type="button" data-v="3" onclick="setSeg('todo-importance-seg',3)">High</button>
+                        </div>
                     </div>
                     <div class="field">
-                        <label for="todo-effort">Effort <span id="todo-eff-val">3</span>/5</label>
-                        <input type="range" id="todo-effort" min="1" max="5" value="3" oninput="document.getElementById('todo-eff-val').textContent=this.value">
+                        <label>Effort</label>
+                        <div class="seg-control" id="todo-effort-seg" data-value="2">
+                            <button type="button" data-v="1" onclick="setSeg('todo-effort-seg',1)">Low</button>
+                            <button type="button" data-v="2" class="active" onclick="setSeg('todo-effort-seg',2)">Med</button>
+                            <button type="button" data-v="3" onclick="setSeg('todo-effort-seg',3)">High</button>
+                        </div>
                     </div>
                 </div>
-                <div class="field">
-                    <label for="todo-due">Due (optional)</label>
-                    <input type="date" id="todo-due">
+                <div class="form-grid-2" id="todo-estimate-field">
+                    <div class="field">
+                        <label for="todo-estimate">Time estimate</label>
+                        <select id="todo-estimate">
+                            <option value="">—</option>
+                            <option value="15">15m</option>
+                            <option value="30">30m</option>
+                            <option value="60">1h</option>
+                            <option value="120">2h</option>
+                            <option value="240">Half-day</option>
+                        </select>
+                    </div>
+                    <div class="field" id="todo-due-field">
+                        <label for="todo-due">Due (optional)</label>
+                        <input type="date" id="todo-due">
+                    </div>
+                </div>
+                <div class="field" id="todo-goal-field">
+                    <label for="todo-goal">Link to goal (optional)</label>
+                    <select id="todo-goal">
+                        <option value="">—</option>
+                    </select>
                 </div>
                 <div class="flex gap-sm">
-                    <button class="btn btn-primary btn-sm" type="button" onclick="addTodo()">Add todo</button>
+                    <button class="btn btn-primary btn-sm" type="button" id="todo-add-btn" onclick="addTodo()">Add</button>
                     <button class="btn btn-ghost btn-sm" type="button" onclick="toggleTodoForm(false)">Cancel</button>
                 </div>
             </div>
-            <ul class="checklist" id="todo-list"></ul>
-            <p class="empty-hint text-muted hidden" id="todo-empty">No open todos — add one above.</p>
+            <div id="todo-matrix" class="todo-matrix hidden"></div>
+            <ul class="todo-tree" id="todo-list"></ul>
+            <p class="empty-hint text-muted hidden" id="todo-empty">Nothing here yet — add one above.</p>
+
+            <details class="planning-more" id="planning-more">
+                <summary>More: Overall · Ideas · Goals · History</summary>
+                <div class="tabs planning-tabs" id="main-planning-tabs" style="margin-top:var(--space-md)">
+                    <button class="tab-btn" type="button" data-main-tab="todo" onclick="switchMainTab('todo', this); switchTodoBucket('overall', document.querySelector('[data-bucket=overall]'))">Overall</button>
+                    <button class="tab-btn" type="button" data-main-tab="todo" onclick="switchMainTab('todo', this); switchTodoBucket('idea', document.querySelector('[data-bucket=idea]'))">Ideas</button>
+                    <button class="tab-btn" type="button" data-main-tab="goals" onclick="switchMainTab('goals', this)">Goals</button>
+                    <button class="tab-btn" type="button" data-main-tab="history" onclick="switchMainTab('history', this)">History</button>
+                </div>
+                <div class="bucket-chips hidden" id="todo-bucket-chips">
+                    <button class="chip active" type="button" data-bucket="today" onclick="switchTodoBucket('today', this)">Today</button>
+                    <button class="chip" type="button" data-bucket="overall" onclick="switchTodoBucket('overall', this)">Overall</button>
+                    <button class="chip" type="button" data-bucket="idea" onclick="switchTodoBucket('idea', this)">Ideas</button>
+                </div>
+
+                <div id="main-tab-todo" class="tab-pane active">
+                    <!-- list above is shared; bucket switch reloads it -->
+                </div>
+
+                <div id="main-tab-goals" class="tab-pane">
+                    <div class="card-header">
+                        <h3 class="card-title">Goals</h3>
+                        <button class="btn btn-secondary btn-sm" type="button" onclick="toggleGoalForm()">+ Add</button>
+                    </div>
+                    <p class="text-muted" style="margin-bottom:var(--space-md);font-size:var(--font-size-sm)">
+                        Goal → this week’s commitments → linked tasks.
+                    </p>
+                    <div class="add-form hidden" id="goal-form">
+                        <div class="field">
+                            <label for="goal-title">Goal</label>
+                            <input type="text" id="goal-title" placeholder="e.g. Consistent Zone 2 week">
+                        </div>
+                        <div class="field">
+                            <label for="goal-why">Why (optional)</label>
+                            <input type="text" id="goal-why" placeholder="What makes this matter?">
+                        </div>
+                        <div class="form-grid-2">
+                            <div class="field">
+                                <label>Type</label>
+                                <div class="seg-control" id="goal-type-seg" data-value="project">
+                                    <button type="button" data-v="project" class="active" onclick="setGoalType('project')">Project</button>
+                                    <button type="button" data-v="metric" onclick="setGoalType('metric')">Metric</button>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label for="goal-target">Target date</label>
+                                <input type="date" id="goal-target">
+                            </div>
+                        </div>
+                        <div class="form-grid-2 hidden" id="goal-metric-fields">
+                            <div class="field">
+                                <label for="goal-metric-key">Metric</label>
+                                <select id="goal-metric-key">
+                                    <option value="workouts_week">Workouts / week</option>
+                                    <option value="protein_days">Protein days / week</option>
+                                    <option value="steps_days">Steps days / week</option>
+                                    <option value="routine_pct">Routine completion %</option>
+                                    <option value="weight">Weight</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="goal-metric-target">Target value</label>
+                                <input type="number" id="goal-metric-target" min="0.1" step="0.1" placeholder="e.g. 3">
+                            </div>
+                        </div>
+                        <div class="flex gap-sm">
+                            <button class="btn btn-primary btn-sm" type="button" onclick="addGoal()">Add goal</button>
+                            <button class="btn btn-ghost btn-sm" type="button" onclick="toggleGoalForm(false)">Cancel</button>
+                        </div>
+                    </div>
+                    <ul class="goal-list" id="goal-list"></ul>
+                    <p class="empty-hint text-muted hidden" id="goal-empty">No active goals yet.</p>
+                </div>
+
+                <div id="main-tab-history" class="tab-pane">
+                    <div class="card-header">
+                        <h3 class="card-title">Past days</h3>
+                        <label class="text-muted" style="font-size:var(--font-size-sm);display:flex;align-items:center;gap:6px">
+                            <input type="checkbox" id="history-active-only" onchange="loadHistoryList()"> Active only
+                        </label>
+                    </div>
+                    <ul class="history-list" id="history-list">
+                        <li class="text-muted">Loading…</li>
+                    </ul>
+                    <div class="history-detail hidden" id="history-detail">
+                        <div class="card-header">
+                            <h3 class="card-title" id="history-detail-title">Day</h3>
+                            <button class="btn btn-ghost btn-sm" type="button" onclick="closeHistoryDetail()">Close</button>
+                        </div>
+                        <div class="history-detail-stats" id="history-detail-stats"></div>
+                        <div class="history-edit-grid">
+                            <div>
+                                <h4 class="history-subhead">Steps</h4>
+                                <div class="add-form-row">
+                                    <input type="number" id="hist-steps" placeholder="Steps" min="0" step="100">
+                                    <button class="btn btn-primary btn-sm" type="button" onclick="saveHistorySteps()">Save</button>
+                                </div>
+                            </div>
+                            <div>
+                                <h4 class="history-subhead">Add food</h4>
+                                <div class="add-form-row wrap">
+                                    <input type="text" id="hist-food-label" placeholder="Meal">
+                                    <input type="number" id="hist-food-cal" placeholder="kcal" style="max-width:80px" min="0">
+                                    <input type="number" id="hist-food-pro" placeholder="protein" style="max-width:80px" min="0">
+                                    <button class="btn btn-primary btn-sm" type="button" onclick="addHistoryFood()">Log</button>
+                                </div>
+                                <ul class="entry-list compact" id="hist-food-list"></ul>
+                            </div>
+                            <div>
+                                <h4 class="history-subhead">Add workout</h4>
+                                <div class="add-form-row wrap">
+                                    <select id="hist-workout-kind" style="max-width:120px">
+                                        <option value="upper">Upper</option>
+                                        <option value="lower">Lower</option>
+                                        <option value="full">Full body</option>
+                                        <option value="zone2">Zone 2</option>
+                                    </select>
+                                    <input type="text" id="hist-workout-title" placeholder="Name">
+                                    <input type="number" id="hist-workout-mins" placeholder="Min" style="max-width:70px" min="1">
+                                    <input type="number" id="hist-workout-kcal" placeholder="kcal" style="max-width:80px" min="0">
+                                    <button class="btn btn-primary btn-sm" type="button" onclick="addHistoryWorkout()">Log</button>
+                                </div>
+                                <ul class="entry-list compact" id="hist-workout-list"></ul>
+                            </div>
+                            <div>
+                                <h4 class="history-subhead">Completed that day</h4>
+                                <ul class="entry-list compact" id="hist-todos-list"></ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </details>
         </section>
 
-        <!-- Near-term goals -->
-        <section class="card today-section" id="section-goals">
-            <div class="card-header">
-                <h3 class="card-title">Near-term goals</h3>
-                <button class="btn btn-secondary btn-sm" type="button" onclick="toggleGoalForm()">+ Add</button>
-            </div>
-            <div class="add-form hidden" id="goal-form">
-                <div class="field">
-                    <label for="goal-title">Goal</label>
-                    <input type="text" id="goal-title" placeholder="e.g. Run a consistent Zone 2 week">
-                </div>
-                <div class="field">
-                    <label for="goal-desc">Notes</label>
-                    <input type="text" id="goal-desc" placeholder="Optional detail">
-                </div>
-                <div class="field">
-                    <label for="goal-target">Target date</label>
-                    <input type="date" id="goal-target">
-                </div>
-                <div class="flex gap-sm">
-                    <button class="btn btn-primary btn-sm" type="button" onclick="addGoal()">Add goal</button>
-                    <button class="btn btn-ghost btn-sm" type="button" onclick="toggleGoalForm(false)">Cancel</button>
+        <!-- 2. Routines -->
+        <section class="card today-section" id="section-routines">
+            <p class="section-kicker">Routines</p>
+            <div class="routine-collapse open" id="morning-routine-card" data-routine="morning">
+                <button class="routine-collapse-header" type="button" onclick="toggleRoutineCollapse('morning')">
+                    <span class="routine-collapse-title"><span class="icon-morning">☀</span> Morning</span>
+                    <span class="routine-collapse-meta">
+                        <span id="morning-progress-text">0 / 0</span>
+                        <span class="routine-chevron">▾</span>
+                    </span>
+                </button>
+                <div class="routine-collapse-body">
+                    <div class="progress-wrap" style="margin-bottom:var(--space-sm)">
+                        <div class="progress-bar" id="morning-progress-bar" style="width:0%"></div>
+                    </div>
+                    <ul class="checklist" id="morning-checklist"></ul>
                 </div>
             </div>
-            <ul class="goal-list" id="goal-list"></ul>
-            <p class="empty-hint text-muted hidden" id="goal-empty">No active goals yet.</p>
+            <div class="routine-collapse" id="evening-routine-card" data-routine="evening">
+                <button class="routine-collapse-header" type="button" onclick="toggleRoutineCollapse('evening')">
+                    <span class="routine-collapse-title"><span class="icon-evening">☾</span> Evening</span>
+                    <span class="routine-collapse-meta">
+                        <span id="evening-progress-text">0 / 0</span>
+                        <span class="routine-chevron">▾</span>
+                    </span>
+                </button>
+                <div class="routine-collapse-body">
+                    <div class="progress-wrap" style="margin-bottom:var(--space-sm)">
+                        <div class="progress-bar" id="evening-progress-bar" style="width:0%"></div>
+                    </div>
+                    <ul class="checklist" id="evening-checklist"></ul>
+                </div>
+            </div>
+            <div class="routine-collapse hidden" id="daily-routine-card" data-routine="daily">
+                <button class="routine-collapse-header" type="button" onclick="toggleRoutineCollapse('daily')">
+                    <span class="routine-collapse-title"><span class="icon-daily">◎</span> Daily</span>
+                    <span class="routine-collapse-meta">
+                        <span id="daily-progress-text">0 / 0</span>
+                        <span class="routine-chevron">▾</span>
+                    </span>
+                </button>
+                <div class="routine-collapse-body">
+                    <div class="progress-wrap" style="margin-bottom:var(--space-sm)">
+                        <div class="progress-bar" id="daily-progress-bar" style="width:0%"></div>
+                    </div>
+                    <ul class="checklist" id="daily-checklist"></ul>
+                </div>
+            </div>
         </section>
 
-        <!-- Nutrition -->
-        <section class="card today-section" id="section-nutrition">
+        <!-- 3. Body -->
+        <section class="card today-section" id="section-body">
             <div class="card-header">
-                <h3 class="card-title">Calories &amp; protein</h3>
-                <a class="btn btn-ghost btn-sm" href="/design/#panel-nutrition">Adjust goals</a>
-            </div>
-            <div class="macro-summary" id="macro-summary">
-                <div class="macro-block">
-                    <div class="progress-label">
-                        <span>Calories</span>
-                        <span id="cal-label">0 / 0</span>
-                    </div>
-                    <div class="progress-wrap">
-                        <div class="progress-bar" id="cal-bar" style="width:0%"></div>
-                    </div>
+                <div>
+                    <p class="section-kicker">Body</p>
+                    <h3 class="card-title">Fuel · Move · Train</h3>
                 </div>
-                <div class="macro-block">
-                    <div class="progress-label">
-                        <span>Protein</span>
-                        <span id="pro-label">0 / 0 g</span>
-                    </div>
+                <a class="btn btn-ghost btn-sm" href="/design/#panel-nutrition">Settings</a>
+            </div>
+
+            <div class="body-metrics">
+                <div class="body-metric">
+                    <div class="week-stat-label">Calories remaining</div>
+                    <div class="week-stat-value" id="cal-remaining">—</div>
+                    <div class="week-stat-meta" id="cal-label">0 kcal in</div>
+                    <div class="deficit-line" id="deficit-line">…</div>
+                    <div class="tdee-breakdown text-muted" id="tdee-breakdown">TDEE…</div>
+                </div>
+                <div class="body-metric">
+                    <div class="week-stat-label">Protein</div>
+                    <div class="week-stat-value" id="pro-label">—</div>
                     <div class="progress-wrap">
                         <div class="progress-bar progress-bar-protein" id="pro-bar" style="width:0%"></div>
                     </div>
                 </div>
+                <div class="body-metric">
+                    <div class="week-stat-label">Steps</div>
+                    <div class="week-stat-value" id="steps-label">—</div>
+                    <div class="progress-wrap">
+                        <div class="progress-bar progress-bar-steps" id="steps-bar" style="width:0%"></div>
+                    </div>
+                    <div class="add-form-row" style="margin-top:var(--space-sm)">
+                        <input type="number" id="steps-count" placeholder="Steps today" min="0" step="100">
+                        <button class="btn btn-primary btn-sm" type="button" onclick="saveSteps()">Save</button>
+                    </div>
+                </div>
+                <div class="body-metric" id="weight-metric">
+                    <div class="week-stat-label">Weight</div>
+                    <div class="week-stat-value" id="weight-today">—</div>
+                    <div class="week-stat-meta" id="weight-meta">7-day avg —</div>
+                    <div class="add-form-row" style="margin-top:var(--space-sm)">
+                        <input type="number" id="weight-input" placeholder="Today" min="0" step="0.1" style="max-width:90px">
+                        <span class="text-muted" id="weight-unit-label">kg</span>
+                        <button class="btn btn-primary btn-sm" type="button" onclick="saveWeight()">Save</button>
+                    </div>
+                </div>
             </div>
+
+            <div class="week-nutrition body-week-row" id="week-nutrition">
+                <div class="week-stat">
+                    <div class="week-stat-label">Week deficit</div>
+                    <div class="week-stat-value" id="week-deficit">—</div>
+                    <div class="week-stat-meta" id="week-deficit-meta">complete days</div>
+                </div>
+                <div class="week-stat">
+                    <div class="week-stat-label">Protein ±15%</div>
+                    <div class="week-stat-value" id="week-protein-hits">0</div>
+                    <div class="week-stat-meta">complete days</div>
+                </div>
+                <div class="week-stat">
+                    <div class="week-stat-label">Steps week</div>
+                    <div class="week-stat-value" id="week-steps-total">0</div>
+                    <div class="week-stat-meta" id="week-steps-meta">avg —</div>
+                </div>
+                <div class="week-stat">
+                    <div class="week-stat-label">Goal days</div>
+                    <div class="week-stat-value" id="week-steps-hits">—</div>
+                    <div class="week-stat-meta">logged complete</div>
+                </div>
+            </div>
+            <p class="text-muted week-today-line" id="week-today-nutrition">Today (in progress): …</p>
+            <p class="text-muted week-today-line" id="week-today-steps">Today steps: …</p>
+
             <div class="add-form nutrition-quick" id="nutrition-form">
                 <div class="add-form-row">
                     <input type="text" id="food-label" placeholder="Meal or snack">
@@ -112,43 +376,92 @@
                     <button class="btn btn-primary btn-sm" type="button" onclick="addFood()">Log</button>
                 </div>
             </div>
-            <ul class="entry-list compact" id="food-list"></ul>
-        </section>
+            <button class="meal-collapse-toggle" type="button" id="meal-collapse-toggle" onclick="toggleMealList()">
+                <span id="meal-collapse-label">0 entries · 0 kcal</span>
+                <span class="routine-chevron" id="meal-collapse-chevron">▸</span>
+            </button>
+            <ul class="entry-list compact meal-list-collapsed" id="food-list"></ul>
 
-        <!-- Workouts -->
-        <section class="card today-section" id="section-workouts">
-            <div class="card-header">
-                <h3 class="card-title">Workouts this week</h3>
+            <h4 class="history-subhead" style="margin-top:var(--space-lg)">Today’s workout</h4>
+            <div class="add-form" id="workout-form">
+                <div class="add-form-row wrap">
+                    <select id="workout-kind" style="max-width:140px">
+                        <option value="upper">Upper</option>
+                        <option value="lower">Lower</option>
+                        <option value="full">Full body</option>
+                        <option value="zone2">Zone 2</option>
+                    </select>
+                    <input type="text" id="workout-title" placeholder="Session name (optional)">
+                    <input type="number" id="workout-mins" placeholder="Min" style="max-width:70px" min="1">
+                    <input type="number" id="workout-kcal" placeholder="kcal burned" style="max-width:110px" min="0">
+                    <button class="btn btn-primary btn-sm" type="button" onclick="addWorkout()">Log</button>
+                </div>
             </div>
-            <div class="workout-overview" id="workout-overview">
+            <ul class="entry-list compact" id="workout-today-list"></ul>
+
+            <div class="workout-overview workout-overview-3" id="workout-overview" style="margin-top:var(--space-md)">
+                <div class="workout-stat">
+                    <div class="workout-stat-label">Upper</div>
+                    <div class="workout-stat-value" id="upper-stat">0</div>
+                    <div class="workout-stat-meta" id="upper-meta">incl. full</div>
+                </div>
+                <div class="workout-stat">
+                    <div class="workout-stat-label">Lower</div>
+                    <div class="workout-stat-value" id="lower-stat">0</div>
+                    <div class="workout-stat-meta" id="lower-meta">incl. full</div>
+                </div>
                 <div class="workout-stat">
                     <div class="workout-stat-label">Zone 2</div>
                     <div class="workout-stat-value" id="zone2-stat">0</div>
                     <div class="workout-stat-meta" id="zone2-meta">0 min</div>
                 </div>
-                <div class="workout-stat">
-                    <div class="workout-stat-label">Lifting</div>
-                    <div class="workout-stat-value" id="lifting-stat">0</div>
-                    <div class="workout-stat-meta" id="lifting-meta">0 min</div>
+            </div>
+            <ul class="entry-list compact" id="workout-week-list"></ul>
+        </section>
+
+        <!-- 4. Daily check-in -->
+        <section class="card today-section" id="section-checkin">
+            <p class="section-kicker">Check-in</p>
+            <h3 class="card-title">Daily check-in</h3>
+            <p class="text-muted" style="margin-bottom:var(--space-md)">
+                A short end-of-day pulse — mood, energy, and an optional note.
+            </p>
+            <div class="checkin-week" id="checkin-week" aria-label="This week’s check-ins"></div>
+            <div class="checkin-form">
+                <div class="field">
+                    <label>Mood</label>
+                    <div class="seg-control" id="checkin-mood-seg" data-value="">
+                        <button type="button" data-v="1" onclick="setCheckinSeg('mood',1)">1</button>
+                        <button type="button" data-v="2" onclick="setCheckinSeg('mood',2)">2</button>
+                        <button type="button" data-v="3" onclick="setCheckinSeg('mood',3)">3</button>
+                        <button type="button" data-v="4" onclick="setCheckinSeg('mood',4)">4</button>
+                        <button type="button" data-v="5" onclick="setCheckinSeg('mood',5)">5</button>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Energy</label>
+                    <div class="seg-control" id="checkin-energy-seg" data-value="">
+                        <button type="button" data-v="1" onclick="setCheckinSeg('energy',1)">1</button>
+                        <button type="button" data-v="2" onclick="setCheckinSeg('energy',2)">2</button>
+                        <button type="button" data-v="3" onclick="setCheckinSeg('energy',3)">3</button>
+                        <button type="button" data-v="4" onclick="setCheckinSeg('energy',4)">4</button>
+                        <button type="button" data-v="5" onclick="setCheckinSeg('energy',5)">5</button>
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="checkin-note">Note (optional)</label>
+                    <input type="text" id="checkin-note" placeholder="One line — what stood out?">
+                </div>
+                <div class="flex gap-sm items-center">
+                    <button class="btn btn-primary btn-sm" type="button" onclick="saveCheckin()">Save check-in</button>
+                    <span class="text-muted" id="checkin-saved" style="font-size:var(--font-size-sm)"></span>
                 </div>
             </div>
-            <div class="add-form" id="workout-form">
-                <div class="add-form-row wrap">
-                    <select id="workout-kind" style="max-width:140px">
-                        <option value="zone2">Zone 2</option>
-                        <option value="lifting">Lifting</option>
-                    </select>
-                    <input type="text" id="workout-title" placeholder="Session name (optional)">
-                    <input type="number" id="workout-mins" placeholder="Min" style="max-width:70px" min="1">
-                    <button class="btn btn-primary btn-sm" type="button" onclick="addWorkout()">Log</button>
-                </div>
-            </div>
-            <ul class="entry-list compact" id="workout-list"></ul>
         </section>
     </div>
 
     <p class="today-footer text-muted">
-        Routines live on <a href="/tracker/">Tracker</a> · configure goals &amp; reminders in <a href="/design/">Design</a>
+        Configure routines &amp; day times in <a href="/design/">Design</a> · evening flow on <a href="/review/">Review</a>
     </p>
 </div>
 {% endblock %}

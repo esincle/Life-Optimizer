@@ -1,8 +1,25 @@
+import re
 from flask import Blueprint, render_template, request, jsonify
 from app.extensions import db
-from app.models import RoutineStep, Technique, JournalPrompt
+from app.models import RoutineStep, Technique, JournalPrompt, AppSettings
 
 design_bp = Blueprint("design", __name__, url_prefix="/design")
+
+_TIME_RE = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
+
+
+def get_or_create_app_settings():
+    row = AppSettings.query.first()
+    if not row:
+        row = AppSettings(
+            morning_until="12:00",
+            evening_from="18:00",
+            todo_cap=3,
+            default_available_hours=4.0,
+        )
+        db.session.add(row)
+        db.session.commit()
+    return row
 
 
 @design_bp.route("/")
@@ -10,11 +27,81 @@ def index():
     return render_template("design/index.html")
 
 
+@design_bp.route("/api/settings", methods=["GET"])
+def get_settings():
+    return jsonify(get_or_create_app_settings().to_dict())
+
+
+@design_bp.route("/api/settings", methods=["PUT"])
+def update_settings():
+    data = request.get_json() or {}
+    row = get_or_create_app_settings()
+    if "morning_until" in data:
+        val = (data.get("morning_until") or "").strip()
+        if not _TIME_RE.match(val):
+            return jsonify({"error": "morning_until must be HH:MM"}), 400
+        row.morning_until = val
+    if "evening_from" in data:
+        val = (data.get("evening_from") or "").strip()
+        if not _TIME_RE.match(val):
+            return jsonify({"error": "evening_from must be HH:MM"}), 400
+        row.evening_from = val
+    if "todo_cap" in data:
+        try:
+            row.todo_cap = max(1, min(20, int(data["todo_cap"])))
+        except (TypeError, ValueError):
+            return jsonify({"error": "todo_cap must be an integer"}), 400
+    if "default_available_hours" in data:
+        try:
+            row.default_available_hours = max(0.5, min(24, float(data["default_available_hours"])))
+        except (TypeError, ValueError):
+            return jsonify({"error": "default_available_hours must be a number"}), 400
+    if "weight_unit" in data:
+        unit = (data.get("weight_unit") or "").strip().lower()
+        if unit not in ("kg", "lb"):
+            return jsonify({"error": "weight_unit must be kg or lb"}), 400
+        row.weight_unit = unit
+    if "height_cm" in data:
+        raw = data.get("height_cm")
+        if raw in ("", None):
+            row.height_cm = None
+        else:
+            try:
+                h = float(raw)
+            except (TypeError, ValueError):
+                return jsonify({"error": "height_cm must be a number"}), 400
+            if h < 50 or h > 300:
+                return jsonify({"error": "height_cm out of range"}), 400
+            row.height_cm = h
+    if "age_years" in data:
+        raw = data.get("age_years")
+        if raw in ("", None):
+            row.age_years = None
+        else:
+            try:
+                age = int(raw)
+            except (TypeError, ValueError):
+                return jsonify({"error": "age_years must be an integer"}), 400
+            if age < 10 or age > 120:
+                return jsonify({"error": "age_years out of range"}), 400
+            row.age_years = age
+    if "sex" in data:
+        sex = (data.get("sex") or "").strip().lower()
+        if sex not in ("male", "female"):
+            return jsonify({"error": "sex must be male or female"}), 400
+        row.sex = sex
+    db.session.commit()
+    return jsonify(row.to_dict())
+
+
 # ── ROUTINE STEPS ──────────────────────────────────────────────────────────────
+
+VALID_ROUTINES = ("morning", "evening", "daily")
+
 
 @design_bp.route("/api/routine/<routine_type>", methods=["GET"])
 def get_routine(routine_type):
-    if routine_type not in ("morning", "evening"):
+    if routine_type not in VALID_ROUTINES:
         return jsonify({"error": "Invalid routine type"}), 400
     steps = (RoutineStep.query
              .filter_by(routine=routine_type, is_active=True)
@@ -25,7 +112,7 @@ def get_routine(routine_type):
 
 @design_bp.route("/api/routine/<routine_type>/step", methods=["POST"])
 def create_step(routine_type):
-    if routine_type not in ("morning", "evening"):
+    if routine_type not in VALID_ROUTINES:
         return jsonify({"error": "Invalid routine type"}), 400
     data = request.get_json()
     max_pos = db.session.query(db.func.max(RoutineStep.position)).filter_by(routine=routine_type).scalar() or 0

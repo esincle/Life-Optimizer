@@ -8,29 +8,102 @@
         <p class="page-subtitle">Configure routines, nutrition goals, reminders, techniques, and journal prompts.</p>
     </div>
 
+    <!-- Day loop times -->
+    <div class="panel open" id="panel-day-loop">
+        <div class="panel-header" onclick="togglePanel('panel-day-loop')">
+            <div class="panel-title">Day loop times</div>
+            <span class="panel-chevron">▾</span>
+        </div>
+        <div class="panel-body">
+            <p class="text-muted" style="margin-bottom:var(--space-md);font-size:var(--font-size-sm)">
+                Used on Today to auto-expand Morning (before this time) or Evening (after this time).
+            </p>
+            <div class="form-grid-2">
+                <div class="field">
+                    <label for="design-morning-until">Morning until</label>
+                    <input type="time" id="design-morning-until" value="12:00">
+                </div>
+                <div class="field">
+                    <label for="design-evening-from">Evening from</label>
+                    <input type="time" id="design-evening-from" value="18:00">
+                </div>
+                <div class="field">
+                    <label for="design-todo-cap">Today task cap</label>
+                    <input type="number" id="design-todo-cap" min="1" max="20" step="1" value="3">
+                </div>
+                <div class="field">
+                    <label for="design-available-hours">Default available hours / day</label>
+                    <input type="number" id="design-available-hours" min="0.5" max="24" step="0.5" value="4">
+                </div>
+            </div>
+            <button class="btn btn-primary btn-sm" type="button" onclick="saveDayLoopSettings()">Save</button>
+        </div>
+    </div>
+
     <!-- Nutrition goals -->
-    <div class="panel open" id="panel-nutrition">
+    <div class="panel" id="panel-nutrition">
         <div class="panel-header" onclick="togglePanel('panel-nutrition')">
             <div class="panel-title">
-                Calories &amp; protein goals
+                Calories &amp; protein
             </div>
             <span class="panel-chevron">▾</span>
         </div>
         <div class="panel-body">
             <p class="text-muted" style="margin-bottom:var(--space-md);font-size:var(--font-size-sm)">
-                Adjust daily targets used on the Today dashboard.
+                Daily TDEE = baseline + (steps ÷ 1000 × kcal per 1k) + workout calories burned. Deficit/surplus is vs that dynamic total.
             </p>
             <div class="form-grid-2">
                 <div class="field">
-                    <label for="design-cal-goal">Daily calorie goal</label>
-                    <input type="number" id="design-cal-goal" min="0" step="50">
+                    <label for="design-tdee-baseline">TDEE baseline (kcal)</label>
+                    <input type="number" id="design-tdee-baseline" min="0" step="50" value="2050">
+                </div>
+                <div class="field">
+                    <label for="design-steps-kcal">kcal per 1,000 steps</label>
+                    <input type="number" id="design-steps-kcal" min="0" step="1" value="45">
                 </div>
                 <div class="field">
                     <label for="design-pro-goal">Daily protein goal (g)</label>
-                    <input type="number" id="design-pro-goal" min="0" step="5">
+                    <input type="number" id="design-pro-goal" min="1" step="5" placeholder="e.g. 160">
+                </div>
+                <div class="field">
+                    <label for="design-steps-goal">Daily steps goal</label>
+                    <input type="number" id="design-steps-goal" min="1" step="500" placeholder="e.g. 10000">
+                </div>
+                <div class="field">
+                    <label for="design-weight-unit">Weight unit</label>
+                    <select id="design-weight-unit">
+                        <option value="kg">kg</option>
+                        <option value="lb">lb</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="design-height-cm">Height (cm)</label>
+                    <input type="number" id="design-height-cm" min="50" max="300" step="0.1" placeholder="e.g. 180">
+                </div>
+                <div class="field">
+                    <label for="design-age-years">Age (years)</label>
+                    <input type="number" id="design-age-years" min="10" max="120" step="1" placeholder="e.g. 30">
+                </div>
+                <div class="field">
+                    <label for="design-sex">Sex (for BMR)</label>
+                    <select id="design-sex">
+                        <option value="male">Male (+5)</option>
+                        <option value="female">Female (−161)</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label class="checkbox-label" style="display:flex;align-items:center;gap:8px;margin-top:1.6rem">
+                        <input type="checkbox" id="design-adaptive-tdee">
+                        Use BMR formula for TDEE baseline
+                    </label>
                 </div>
             </div>
-            <button class="btn btn-primary btn-sm" type="button" onclick="saveNutritionGoals()">Save goals</button>
+            <p class="text-muted" style="margin-bottom:var(--space-xs);font-size:var(--font-size-sm)">
+                BMR = 10 × weight (kg) + 6.25 × height (cm) − 5 × age + 5 (male) / −161 (female). Needs a logged weight.
+            </p>
+            <p class="text-muted" id="design-adaptive-hint" style="margin-bottom:var(--space-sm);font-size:var(--font-size-sm)">BMR…</p>
+            <p class="text-muted" id="design-goals-hint" style="margin-bottom:var(--space-md);font-size:var(--font-size-sm)">Loading saved goals…</p>
+            <button class="btn btn-primary btn-sm" type="button" onclick="saveNutritionGoals()">Save</button>
         </div>
     </div>
 
@@ -56,6 +129,7 @@
                         <option value="custom">Custom</option>
                         <option value="morning">Morning</option>
                         <option value="evening">Evening</option>
+                        <option value="daily">Daily</option>
                         <option value="nutrition">Nutrition</option>
                         <option value="workout">Workout</option>
                     </select>
@@ -70,7 +144,7 @@
     <div class="panel" id="panel-morning">
         <div class="panel-header" onclick="togglePanel('panel-morning')">
             <div class="panel-title">
-                <span class="icon-morning">☀️</span> Morning Routine
+                <span class="icon-morning">☀️</span> Morning Tracker
             </div>
             <span class="panel-chevron">▾</span>
         </div>
@@ -95,7 +169,7 @@
     <div class="panel" id="panel-evening">
         <div class="panel-header" onclick="togglePanel('panel-evening')">
             <div class="panel-title">
-                <span class="icon-evening">🌙</span> Evening Routine
+                <span class="icon-evening">🌙</span> Evening Tracker
             </div>
             <span class="panel-chevron">▾</span>
         </div>
@@ -111,6 +185,34 @@
                 </div>
                 <div style="margin-top:var(--space-sm)">
                     <input type="text" id="evening-desc" placeholder="Description (optional)">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Daily Tracker -->
+    <div class="panel" id="panel-daily">
+        <div class="panel-header" onclick="togglePanel('panel-daily')">
+            <div class="panel-title">
+                <span class="icon-daily">◎</span> Daily Tracker
+            </div>
+            <span class="panel-chevron">▾</span>
+        </div>
+        <div class="panel-body">
+            <p class="text-muted" style="margin-bottom:var(--space-md);font-size:var(--font-size-sm)">
+                All-day habits that aren’t morning or evening specific.
+            </p>
+            <ul class="routine-list" id="daily-list" data-routine="daily"></ul>
+            <button class="btn btn-secondary btn-sm" onclick="showAddStep('daily')">+ Add step</button>
+            <div class="add-form hidden" id="add-form-daily">
+                <div class="add-form-row">
+                    <input type="text" id="daily-title" placeholder="Step title">
+                    <input type="number" id="daily-duration" placeholder="Min" style="max-width:70px">
+                    <button class="btn btn-primary btn-sm" onclick="addStep('daily')">Add</button>
+                    <button class="btn btn-ghost btn-sm" onclick="hideAddStep('daily')">Cancel</button>
+                </div>
+                <div style="margin-top:var(--space-sm)">
+                    <input type="text" id="daily-desc" placeholder="Description (optional)">
                 </div>
             </div>
         </div>

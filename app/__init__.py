@@ -7,17 +7,28 @@ def create_app(config=DevelopmentConfig):
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(config)
 
+    # Safari / Chromium expect this MIME for the web app manifest
+    try:
+        import mimetypes
+        mimetypes.add_type("application/manifest+json", ".webmanifest")
+    except Exception:
+        pass
+
     db.init_app(app)
 
     from app.routes.design import design_bp
     from app.routes.tracker import tracker_bp
     from app.routes.journal import journal_bp
     from app.routes.dashboard import dashboard_bp
+    from app.routes.review import review_bp
+    from app.routes.insights import insights_bp
 
     app.register_blueprint(design_bp)
     app.register_blueprint(tracker_bp)
     app.register_blueprint(journal_bp)
     app.register_blueprint(dashboard_bp)
+    app.register_blueprint(review_bp)
+    app.register_blueprint(insights_bp)
 
     @app.route("/")
     def index():
@@ -26,5 +37,7 @@ def create_app(config=DevelopmentConfig):
     # Blueprints import models; create_all registers every table they define
     with app.app_context():
         db.create_all()
+        from app.migrate import migrate_schema
+        migrate_schema()
 
     return app

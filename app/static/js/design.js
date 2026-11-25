@@ -1,37 +1,136 @@
 // Design page logic
 
 document.addEventListener("DOMContentLoaded", () => {
+    loadDayLoopSettings();
     loadNutritionGoals();
     loadReminders();
     loadRoutine("morning");
     loadRoutine("evening");
+    loadRoutine("daily");
     loadTechniques();
     loadPrompts("gratitude");
     loadPrompts("evening");
-    // Open nutrition panel if linked with hash
     if (location.hash === "#panel-nutrition") {
         document.getElementById("panel-nutrition")?.classList.add("open");
+        document.getElementById("panel-day-loop")?.classList.remove("open");
+    }
+    if (location.hash === "#panel-day-loop") {
+        document.getElementById("panel-day-loop")?.classList.add("open");
     }
 });
 
-// ── NUTRITION GOALS ───────────────────────────────────────────────────────────
+async function loadDayLoopSettings() {
+    try {
+        const s = await api.get("/design/api/settings");
+        document.getElementById("design-morning-until").value = s.morning_until || "12:00";
+        document.getElementById("design-evening-from").value = s.evening_from || "18:00";
+        document.getElementById("design-todo-cap").value = s.todo_cap ?? 3;
+        document.getElementById("design-available-hours").value = s.default_available_hours ?? 4;
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+async function saveDayLoopSettings() {
+    try {
+        await api.put("/design/api/settings", {
+            morning_until: document.getElementById("design-morning-until").value,
+            evening_from: document.getElementById("design-evening-from").value,
+            todo_cap: Number(document.getElementById("design-todo-cap").value),
+            default_available_hours: Number(document.getElementById("design-available-hours").value),
+        });
+        showToast("Day loop settings saved", "success");
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+// ── NUTRITION ─────────────────────────────────────────────────────────────────
 
 async function loadNutritionGoals() {
     try {
-        const t = await api.get("/today/api/nutrition/targets");
-        document.getElementById("design-cal-goal").value = t.calorie_goal;
-        document.getElementById("design-pro-goal").value = t.protein_goal;
+        const [t, settings] = await Promise.all([
+            api.get("/today/api/nutrition/targets"),
+            api.get("/design/api/settings"),
+        ]);
+        const baseline = document.getElementById("design-tdee-baseline");
+        const stepsKcal = document.getElementById("design-steps-kcal");
+        const proGoal = document.getElementById("design-pro-goal");
+        const stepsGoal = document.getElementById("design-steps-goal");
+        if (!baseline || !proGoal || !stepsGoal) {
+            throw new Error("Nutrition settings fields missing on page");
+        }
+        baseline.value = t.tdee_baseline ?? 2050;
+        stepsKcal.value = t.steps_kcal_per_1k ?? 45;
+        // Show saved goals; leave blank when unset (null)
+        proGoal.value = t.protein_goal != null ? t.protein_goal : "";
+        stepsGoal.value = t.steps_goal != null ? t.steps_goal : "";
+        const unitEl = document.getElementById("design-weight-unit");
+        if (unitEl) unitEl.value = settings.weight_unit || "kg";
+        const heightEl = document.getElementById("design-height-cm");
+        if (heightEl) heightEl.value = settings.height_cm != null ? settings.height_cm : "";
+        const ageEl = document.getElementById("design-age-years");
+        if (ageEl) ageEl.value = settings.age_years != null ? settings.age_years : "";
+        const sexEl = document.getElementById("design-sex");
+        if (sexEl) sexEl.value = settings.sex || "male";
+        const adaptEl = document.getElementById("design-adaptive-tdee");
+        if (adaptEl) adaptEl.checked = !!(t.use_bmr_baseline ?? t.use_adaptive_tdee);
+        const adaptHint = document.getElementById("design-adaptive-hint");
+        if (adaptHint) {
+            const a = t.adaptive || t.bmr || {};
+            if (a.ready) {
+                adaptHint.textContent =
+                    `BMR ready: ${a.bmr ?? a.adaptive_baseline} kcal ` +
+                    `(${a.weight_kg} kg on ${a.weight_date} · ${a.height_cm} cm · age ${a.age_years} · ${a.sex})`;
+            } else {
+                const miss = (a.missing || []).join(", ") || "weight, height, age";
+                adaptHint.textContent = `BMR needs: ${miss}.`;
+            }
+        }
+        const hint = document.getElementById("design-goals-hint");
+        if (hint) {
+            const bits = [];
+            bits.push(t.protein_goal != null ? `Protein ${t.protein_goal} g` : "Protein unset");
+            bits.push(t.steps_goal != null ? `Steps ${t.steps_goal.toLocaleString()}` : "Steps unset");
+            bits.push(`Weight ${(settings.weight_unit || "kg")}`);
+            if (settings.height_cm) bits.push(`${settings.height_cm} cm`);
+            hint.textContent = `Saved: ${bits.join(" · ")}`;
+        }
     } catch (e) {
         showToast(e.message, "error");
     }
 }
 
 async function saveNutritionGoals() {
-    const calorie_goal = Number(document.getElementById("design-cal-goal").value);
-    const protein_goal = Number(document.getElementById("design-pro-goal").value);
+    const tdee_baseline = Number(document.getElementById("design-tdee-baseline").value);
+    const steps_kcal_per_1k = Number(document.getElementById("design-steps-kcal").value);
+    const proRaw = document.getElementById("design-pro-goal").value.trim();
+    const stepsRaw = document.getElementById("design-steps-goal").value.trim();
+    const protein_goal = proRaw === "" ? null : Number(proRaw);
+    const steps_goal = stepsRaw === "" ? null : Number(stepsRaw);
+    const use_adaptive_tdee = !!document.getElementById("design-adaptive-tdee")?.checked;
+    const weight_unit = document.getElementById("design-weight-unit")?.value || "kg";
+    const heightRaw = document.getElementById("design-height-cm")?.value.trim() ?? "";
+    const ageRaw = document.getElementById("design-age-years")?.value.trim() ?? "";
+    const sex = document.getElementById("design-sex")?.value || "male";
     try {
-        await api.put("/today/api/nutrition/targets", { calorie_goal, protein_goal });
-        showToast("Nutrition goals saved", "success");
+        await Promise.all([
+            api.put("/today/api/nutrition/targets", {
+                tdee_baseline,
+                steps_kcal_per_1k,
+                protein_goal,
+                steps_goal,
+                use_adaptive_tdee,
+            }),
+            api.put("/design/api/settings", {
+                weight_unit,
+                height_cm: heightRaw === "" ? null : Number(heightRaw),
+                age_years: ageRaw === "" ? null : Number(ageRaw),
+                sex,
+            }),
+        ]);
+        showToast("Nutrition settings saved", "success");
+        await loadNutritionGoals();
     } catch (e) {
         showToast(e.message, "error");
     }
@@ -202,7 +301,7 @@ function startEditStep(id, title, desc, dur) {
 
 // Helper: find routine type from the list element's data attribute
 function findRoutineForStep(stepId) {
-    const lists = ["morning", "evening"];
+    const lists = ["morning", "evening", "daily"];
     for (const r of lists) {
         const list = document.getElementById(`${r}-list`);
         if (list && list.querySelector(`[data-id="${stepId}"]`)) return r;
@@ -217,9 +316,9 @@ async function saveEditStep(id) {
     const dur = parseInt(document.getElementById(`edit-dur-${id}`).value) || null;
     try {
         await api.put(`/design/api/routine/step/${id}`, { title, description: desc, duration_minutes: dur });
-        // Reload both routines since we don't know which
         loadRoutine("morning");
         loadRoutine("evening");
+        loadRoutine("daily");
         showToast("Saved", "success");
     } catch (e) {
         showToast(e.message, "error");

@@ -1,4 +1,4 @@
-// Tracker page logic
+// Tracker page logic — morning, evening, and daily checklists
 
 document.addEventListener("DOMContentLoaded", async () => {
     const today = new Date();
@@ -10,25 +10,56 @@ document.addEventListener("DOMContentLoaded", async () => {
     loadHistory();
 });
 
+const ROUTINES = ["morning", "evening", "daily"];
+
+function badgeClass(routine) {
+    if (routine === "morning") return "badge-morning";
+    if (routine === "evening") return "badge-evening";
+    return "badge-daily";
+}
+
 // ── TODAY'S CHECKLISTS ────────────────────────────────────────────────────────
 
 async function loadToday() {
-    const data = await api.post("/tracker/api/today/init", {});
-    renderCompletions(data.completions);
+    try {
+        const data = await api.post("/tracker/api/today/init", {});
+        renderCompletions(data.completions || []);
+    } catch (e) {
+        showToast(e.message || "Couldn’t load today’s routines", "error");
+        for (const routine of ROUTINES) {
+            const list = document.getElementById(`${routine}-checklist`);
+            if (list) {
+                list.innerHTML = `<li class="text-muted">Couldn’t load checklist.</li>`;
+            }
+        }
+    }
 }
 
 function renderCompletions(completions) {
-    const morning = completions.filter(c => c.routine === "morning");
-    const evening = completions.filter(c => c.routine === "evening");
-
-    renderChecklist("morning", morning);
-    renderChecklist("evening", evening);
-    updateProgress("morning", morning);
-    updateProgress("evening", evening);
+    for (const routine of ROUTINES) {
+        const items = completions.filter(c => c.routine === routine);
+        const card = document.getElementById(`${routine}-routine-card`)
+            || (routine === "daily" ? document.getElementById("daily-routine-card") : null);
+        if (routine === "daily") {
+            const dailyCard = document.getElementById("daily-routine-card");
+            if (dailyCard) {
+                if (items.length === 0) {
+                    dailyCard.classList.add("hidden");
+                    continue;
+                }
+                dailyCard.classList.remove("hidden");
+            }
+        } else if (card && items.length === 0) {
+            // Morning/evening stay visible with empty hint
+        }
+        renderChecklist(routine, items);
+        updateProgress(routine, items);
+    }
 }
 
 function renderChecklist(routine, completions) {
     const list = document.getElementById(`${routine}-checklist`);
+    if (!list) return;
     if (completions.length === 0) {
         list.innerHTML = `<li class="text-muted" style="padding:var(--space-sm) 0">No steps — go to Design to add some.</li>`;
         return;
@@ -56,8 +87,10 @@ function updateProgress(routine, completions) {
     const total = completions.length;
     const done = completions.filter(c => c.completed).length;
     const pct = total > 0 ? Math.round(done / total * 100) : 0;
-    document.getElementById(`${routine}-progress-text`).textContent = `${done} / ${total} done`;
-    document.getElementById(`${routine}-progress-bar`).style.width = `${pct}%`;
+    const text = document.getElementById(`${routine}-progress-text`);
+    const bar = document.getElementById(`${routine}-progress-bar`);
+    if (text) text.textContent = `${done} / ${total} done`;
+    if (bar) bar.style.width = `${pct}%`;
 }
 
 async function toggleItem(completionId) {
@@ -65,10 +98,10 @@ async function toggleItem(completionId) {
         const updated = await api.post(`/tracker/api/completion/${completionId}/toggle`, {});
         const li = document.getElementById(`item-${completionId}`);
         li.outerHTML = checkItemHtml(updated);
-        // Refresh progress for that routine
         const data = await api.get("/tracker/api/today");
-        updateProgress("morning", data.completions.filter(c => c.routine === "morning"));
-        updateProgress("evening", data.completions.filter(c => c.routine === "evening"));
+        for (const routine of ROUTINES) {
+            updateProgress(routine, data.completions.filter(c => c.routine === routine));
+        }
     } catch (e) {
         showToast(e.message, "error");
     }
@@ -77,21 +110,22 @@ async function toggleItem(completionId) {
 // ── STREAKS ───────────────────────────────────────────────────────────────────
 
 async function loadStreaks() {
+    const grid = document.getElementById("streak-grid");
+    if (!grid) return;
     try {
         const streaks = await api.get("/tracker/api/streaks");
-        const grid = document.getElementById("streak-grid");
-        if (streaks.length === 0) {
-            grid.innerHTML = `<p class="text-muted">Add routine steps in Design to start tracking streaks.</p>`;
+        if (!Array.isArray(streaks) || streaks.length === 0) {
+            grid.innerHTML = `<p class="text-muted">No streaks yet. Add routine steps in Design and check them off to start.</p>`;
             return;
         }
         grid.innerHTML = streaks.map(s => `
             <div class="streak-card">
                 <div class="streak-number">${s.streak}</div>
                 <div class="streak-label">${escHtml(s.title)}</div>
-                <div class="badge ${s.routine === "morning" ? "badge-morning" : "badge-evening"}" style="margin-top:4px">${s.routine}</div>
+                <div class="badge ${badgeClass(s.routine)}" style="margin-top:4px">${escHtml(s.routine)}</div>
             </div>`).join("");
     } catch (e) {
-        console.error("Streaks:", e);
+        grid.innerHTML = `<p class="text-muted">Couldn’t load streaks. ${escHtml(e.message || "Try refreshing.")}</p>`;
     }
 }
 
@@ -102,12 +136,16 @@ async function loadHistory() {
         const history = await api.get("/tracker/api/history?days=35");
         renderCalendar(history);
     } catch (e) {
-        console.error("History:", e);
+        const cal = document.getElementById("calendar-grid");
+        if (cal) {
+            cal.innerHTML = `<p class="text-muted">Couldn’t load history. ${escHtml(e.message || "")}</p>`;
+        }
     }
 }
 
-function pctBucket(morning, evening) {
-    const avg = (morning + evening) / 2;
+function pctBucket(morning, evening, daily) {
+    const parts = [morning, evening, daily].filter(p => p !== undefined);
+    const avg = parts.reduce((a, b) => a + b, 0) / (parts.length || 1);
     if (avg === 0)   return "0";
     if (avg < 30)    return "low";
     if (avg < 70)    return "mid";
@@ -117,26 +155,23 @@ function pctBucket(morning, evening) {
 
 function renderCalendar(history) {
     const grid = document.getElementById("calendar-grid");
-
-    // Sort oldest → newest
     const days = [...history].reverse();
     if (days.length === 0) { grid.innerHTML = ""; return; }
 
-    // Pad start of grid to correct weekday
     const firstDate = new Date(days[0].date + "T00:00:00");
-    const startDow = firstDate.getDay(); // 0=Sun
+    const startDow = firstDate.getDay();
     let cells = "";
     for (let i = 0; i < startDow; i++) {
         cells += `<div class="calendar-day empty"></div>`;
     }
 
     for (const d of days) {
-        const bucket = pctBucket(d.morning_pct, d.evening_pct);
+        const bucket = pctBucket(d.morning_pct, d.evening_pct, d.daily_pct || 0);
         const journalClass = d.has_journal ? " has-journal" : "";
         const dateObj = new Date(d.date + "T00:00:00");
         const label = dateObj.getDate();
         cells += `<div class="calendar-day${journalClass}" data-pct="${bucket}"
-            title="${d.date} — morning ${d.morning_pct}% · evening ${d.evening_pct}%"
+            title="${d.date} — morning ${d.morning_pct}% · daily ${d.daily_pct || 0}% · evening ${d.evening_pct}%"
             onclick="showDayDetail('${d.date}')"
             style="display:flex;align-items:center;justify-content:center;font-size:0.65rem;color:rgba(0,0,0,0.4);font-weight:600">
             ${label}
@@ -161,6 +196,7 @@ async function showDayDetail(dateStr) {
             return;
         }
         const morning = data.completions.filter(c => c.routine === "morning");
+        const daily = data.completions.filter(c => c.routine === "daily");
         const evening = data.completions.filter(c => c.routine === "evening");
 
         const renderSection = (label, items) => {
@@ -177,6 +213,7 @@ async function showDayDetail(dateStr) {
 
         document.getElementById("popover-content").innerHTML =
             renderSection("☀️ Morning", morning) +
+            renderSection("◎ Daily", daily) +
             renderSection("🌙 Evening", evening);
     } catch (e) {
         document.getElementById("popover-content").innerHTML = `<p class='text-muted'>${escHtml(e.message)}</p>`;

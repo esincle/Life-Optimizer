@@ -24,12 +24,15 @@ function switchJournalTab(type, btn) {
 // ── JOURNAL COMPOSER ──────────────────────────────────────────────────────────
 
 async function loadJournalEntry(type) {
+    const container = document.getElementById(`${type}-prompts`);
     try {
         const data = await api.get(`/journal/api/today/${type}`);
         entryData[type] = data;
-        renderPrompts(type, data.prompts);
+        renderPrompts(type, data.prompts || []);
     } catch (e) {
-        console.error(`Journal ${type}:`, e);
+        if (container) {
+            container.innerHTML = `<p class="text-muted">Couldn’t load prompts. ${escHtml(e.message || "Try refreshing.")}</p>`;
+        }
     }
 }
 
@@ -72,21 +75,27 @@ async function saveEntry(type) {
 // ── ENTRY LIST (sidebar) ──────────────────────────────────────────────────────
 
 async function loadEntryList(page, append) {
+    const container = document.getElementById("entry-list-container");
+    const moreBtn = document.getElementById("load-more-btn");
     try {
         const data = await api.get(`/journal/api/entries?page=${page}&per_page=20`);
         entriesPage = page;
-        renderEntryList(data.entries, append);
-        document.getElementById("load-more-btn").style.display = data.has_more ? "block" : "none";
+        renderEntryList(data.entries || [], append);
+        if (moreBtn) moreBtn.style.display = data.has_more ? "block" : "none";
     } catch (e) {
-        console.error("Entry list:", e);
+        if (!append && container) {
+            container.innerHTML = `<p class="text-muted text-sm" style="padding:var(--space-sm) 0">Couldn’t load entries. ${escHtml(e.message || "Try refreshing.")}</p>`;
+        }
+        if (moreBtn) moreBtn.style.display = "none";
     }
 }
 
 function renderEntryList(entries, append) {
     const container = document.getElementById("entry-list-container");
+    if (!container) return;
     if (!append) container.innerHTML = "";
 
-    if (entries.length === 0 && !append) {
+    if (!entries || (entries.length === 0 && !append)) {
         container.innerHTML = `<p class="text-muted text-sm" style="padding:var(--space-sm) 0">No entries yet. Write your first entry above!</p>`;
         return;
     }
@@ -130,7 +139,10 @@ function onSearch(value) {
             renderEntryList(data.entries, false);
             document.getElementById("load-more-btn").style.display = "none";
         } catch (e) {
-            console.error("Search:", e);
+            const container = document.getElementById("entry-list-container");
+            if (container) {
+                container.innerHTML = `<p class="text-muted text-sm" style="padding:var(--space-sm) 0">Search failed. ${escHtml(e.message || "")}</p>`;
+            }
         }
     }, 300);
 }

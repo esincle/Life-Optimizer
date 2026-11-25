@@ -5,19 +5,24 @@
 }
 
 :root {
-    --color-bg:          #f8f7f4;
-    --color-surface:     #ffffff;
-    --color-border:      #e5e2dc;
-    --color-text:        #2c2c2c;
-    --color-text-muted:  #7a7672;
-    --color-accent:      #5c7a5f;
-    --color-accent-light:#eef3ee;
-    --color-accent-dark: #3d5c40;
-    --color-danger:      #c0392b;
-    --color-danger-light:#fdf0ee;
-    --color-morning:     #e8a838;
-    --color-evening:     #6b5ea8;
-    --color-success:     #27ae60;
+    /* Cool mist / deep teal — light, calm, focused */
+    --color-bg:          #eef2f4;
+    --color-bg-deep:     #e4eaee;
+    --color-surface:     rgba(255, 255, 255, 0.82);
+    --color-surface-solid: #ffffff;
+    --color-border:      #d5dde3;
+    --color-border-soft: #e4eaef;
+    --color-text:        #1c2429;
+    --color-text-muted:  #5f6d76;
+    --color-accent:      #0f6b5c;
+    --color-accent-light:#e4f2ee;
+    --color-accent-dark: #0a4f44;
+    --color-danger:      #b33a2b;
+    --color-danger-light:#f8ecea;
+    --color-morning:     #c47a1a;
+    --color-evening:     #3d5f7a;
+    --color-success:     #1f8a5b;
+    --color-ink-soft:    #2a3a42;
 
     --space-xs:  4px;
     --space-sm:  8px;
@@ -26,27 +31,31 @@
     --space-xl:  40px;
     --space-2xl: 64px;
 
-    --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-display: "Outfit", "Source Sans 3", sans-serif;
+    --font-body: "Source Sans 3", "Segoe UI", sans-serif;
     --font-size-xs:   0.75rem;
     --font-size-sm:   0.875rem;
     --font-size-base: 1rem;
     --font-size-lg:   1.125rem;
-    --font-size-xl:   1.375rem;
-    --font-size-2xl:  1.75rem;
+    --font-size-xl:   1.4rem;
+    --font-size-2xl:  2rem;
+    --font-size-hero: clamp(2.1rem, 4vw, 2.75rem);
 
-    --radius-sm: 4px;
-    --radius:    8px;
-    --radius-lg: 12px;
-    --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
-    --shadow:    0 2px 8px rgba(0,0,0,0.08);
-    --shadow-lg: 0 4px 16px rgba(0,0,0,0.12);
+    --radius-sm: 6px;
+    --radius:    10px;
+    --radius-lg: 16px;
+    --shadow-sm: 0 1px 2px rgba(28, 36, 41, 0.04);
+    --shadow:    0 8px 24px rgba(28, 36, 41, 0.06);
 
-    --transition: 150ms ease;
+    --transition: 180ms ease;
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 html {
     font-size: 16px;
     -webkit-font-smoothing: antialiased;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
 }
 
 body {
@@ -54,13 +63,51 @@ body {
     font-size: var(--font-size-base);
     color: var(--color-text);
     background: var(--color-bg);
-    line-height: 1.6;
+    line-height: 1.55;
     min-height: 100vh;
+    min-height: 100dvh;
+    position: relative;
+    /* Notch / home-indicator safe areas when installed as home-screen app */
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
 }
 
-h1 { font-size: var(--font-size-2xl); font-weight: 700; line-height: 1.2; }
-h2 { font-size: var(--font-size-xl);  font-weight: 600; line-height: 1.3; }
-h3 { font-size: var(--font-size-lg);  font-weight: 600; line-height: 1.4; }
+/* Avoid iOS zoom-on-focus for form controls */
+@media (max-width: 700px) {
+    input, textarea, select, button {
+        font-size: 16px;
+    }
+}
+
+.app-atmosphere {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+        radial-gradient(900px 520px at 8% -10%, rgba(15, 107, 92, 0.14), transparent 55%),
+        radial-gradient(700px 480px at 92% 8%, rgba(61, 95, 122, 0.12), transparent 50%),
+        radial-gradient(640px 420px at 50% 110%, rgba(196, 122, 26, 0.08), transparent 55%),
+        linear-gradient(180deg, #f4f7f8 0%, var(--color-bg) 42%, var(--color-bg-deep) 100%);
+}
+
+.app-main {
+    position: relative;
+    z-index: 1;
+}
+
+h1, h2, h3, .nav-brand, .card-title, .page-title, .brand-mark,
+.week-stat-value, .workout-stat-value {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+}
+
+h1 { font-size: var(--font-size-2xl); font-weight: 700; line-height: 1.15; }
+h2 { font-size: var(--font-size-xl);  font-weight: 600; line-height: 1.25; }
+h3 { font-size: var(--font-size-lg);  font-weight: 600; line-height: 1.35; }
+
+/* Outfit may not ship 650; keep a safe fallback */
+.card-title { font-weight: 600; }
 
 p { color: var(--color-text); }
 
@@ -77,7 +124,7 @@ input, textarea, select {
     font-family: var(--font-body);
     font-size: var(--font-size-base);
     color: var(--color-text);
-    background: var(--color-surface);
+    background: var(--color-surface-solid);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
     padding: var(--space-sm) var(--space-md);
@@ -88,7 +135,7 @@ input, textarea, select {
 
 input:focus, textarea:focus, select:focus {
     border-color: var(--color-accent);
-    box-shadow: 0 0 0 3px rgba(92, 122, 95, 0.15);
+    box-shadow: 0 0 0 3px rgba(15, 107, 92, 0.14);
 }
 
 textarea {
@@ -99,7 +146,7 @@ textarea {
 label {
     display: block;
     font-size: var(--font-size-sm);
-    font-weight: 500;
+    font-weight: 600;
     color: var(--color-text-muted);
     margin-bottom: var(--space-xs);
 }
@@ -110,7 +157,7 @@ label {
 
 hr {
     border: none;
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--color-border-soft);
     margin: var(--space-lg) 0;
 }
 
@@ -130,13 +177,22 @@ hr {
 .badge {
     display: inline-flex;
     align-items: center;
-    padding: 2px var(--space-sm);
-    border-radius: 999px;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
     font-size: var(--font-size-xs);
     font-weight: 600;
     background: var(--color-accent-light);
     color: var(--color-accent-dark);
 }
 
-.badge-morning { background: #fef3e0; color: #92660a; }
-.badge-evening { background: #ede9f7; color: #4a3f80; }
+.badge-morning { background: #f8eedc; color: #8a5a10; }
+.badge-evening { background: #e7eef4; color: #2f4d63; }
+.badge-daily   { background: #e5f0f8; color: #245f88; }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
