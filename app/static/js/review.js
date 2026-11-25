@@ -28,6 +28,7 @@ async function loadShutdown() {
         renderEveningRoutine();
         renderReflection();
         renderPlanCandidates();
+        renderShutCheckin();
         selectedTomorrow = new Set((shutdownState.tomorrow_todos || []).map(t => t.id));
         updateSelectedCount();
 
@@ -256,6 +257,35 @@ async function shutdownSkip(from) {
     await shutdownNext(from);
 }
 
+function setShutCheckin(field, value) {
+    const seg = document.getElementById(`shut-${field}-seg`);
+    if (!seg) return;
+    seg.dataset.value = String(value);
+    seg.querySelectorAll("button").forEach(b => {
+        b.classList.toggle("active", Number(b.dataset.v) === value);
+    });
+}
+
+function renderShutCheckin() {
+    const c = shutdownState.checkin || {};
+    if (c.mood) setShutCheckin("mood", c.mood);
+    if (c.energy) setShutCheckin("energy", c.energy);
+    const note = document.getElementById("shut-checkin-note");
+    if (note) note.value = c.note || "";
+}
+
+async function saveShutCheckinIfAny() {
+    const mood = document.getElementById("shut-mood-seg")?.dataset.value;
+    const energy = document.getElementById("shut-energy-seg")?.dataset.value;
+    const note = document.getElementById("shut-checkin-note")?.value.trim() || "";
+    if (!mood && !energy && !note) return;
+    const payload = {};
+    if (mood) payload.mood = Number(mood);
+    if (energy) payload.energy = Number(energy);
+    if (note) payload.note = note;
+    await api.put("/today/api/checkin", payload);
+}
+
 async function shutdownFinish(skippedPlan = false) {
     try {
         if (!skippedPlan) {
@@ -264,6 +294,7 @@ async function shutdownFinish(skippedPlan = false) {
                 available_hours: Number(document.getElementById("tomorrow-hours").value),
             });
         }
+        await saveShutCheckinIfAny();
         await api.post("/review/api/shutdown/complete", {});
         showPane("done");
         showToast("Day marked complete", "success");

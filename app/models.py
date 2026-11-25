@@ -87,7 +87,23 @@ class DailyLog(db.Model):
     available_hours  = db.Column(db.Float, nullable=True)  # overrides Design default for that day
     shutdown_step    = db.Column(db.Integer, nullable=True)  # 0–4 progress through evening flow
     morning_seen     = db.Column(db.Boolean, nullable=False, default=False)
+    # Phase 6 — daily check-in pulse
+    checkin_mood     = db.Column(db.Integer, nullable=True)   # 1–5
+    checkin_energy   = db.Column(db.Integer, nullable=True)   # 1–5
+    checkin_note     = db.Column(db.Text, nullable=True)
+    checkin_at       = db.Column(db.DateTime, nullable=True)
     created_at       = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def checkin_to_dict(self):
+        return {
+            "mood": self.checkin_mood,
+            "energy": self.checkin_energy,
+            "note": self.checkin_note,
+            "checkin_at": self.checkin_at.isoformat() if self.checkin_at else None,
+            "saved": self.checkin_at is not None or self.checkin_mood is not None
+                     or self.checkin_energy is not None
+                     or bool(self.checkin_note),
+        }
 
     completions     = db.relationship("RoutineCompletion", back_populates="daily_log",
                                       cascade="all, delete-orphan")

@@ -124,6 +124,7 @@ def shutdown_state():
             ],
             "entry_id": entry.id if entry else None,
         },
+        "checkin": log.checkin_to_dict(),
         "tomorrow_available_hours": tmr_hours,
         "default_available_hours": settings.default_available_hours,
     })

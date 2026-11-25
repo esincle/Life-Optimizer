@@ -69,6 +69,37 @@
                 <input type="number" id="tomorrow-hours" min="0.5" max="24" step="0.5" value="4">
             </div>
             <p class="text-muted" id="plan-selected-count">0 selected</p>
+
+            <div class="shutdown-checkin" style="margin-top:var(--space-lg)">
+                <h4 class="history-subhead">Daily check-in (optional)</h4>
+                <div class="form-grid-2">
+                    <div class="field">
+                        <label>Mood</label>
+                        <div class="seg-control" id="shut-mood-seg" data-value="">
+                            <button type="button" data-v="1" onclick="setShutCheckin('mood',1)">1</button>
+                            <button type="button" data-v="2" onclick="setShutCheckin('mood',2)">2</button>
+                            <button type="button" data-v="3" onclick="setShutCheckin('mood',3)">3</button>
+                            <button type="button" data-v="4" onclick="setShutCheckin('mood',4)">4</button>
+                            <button type="button" data-v="5" onclick="setShutCheckin('mood',5)">5</button>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label>Energy</label>
+                        <div class="seg-control" id="shut-energy-seg" data-value="">
+                            <button type="button" data-v="1" onclick="setShutCheckin('energy',1)">1</button>
+                            <button type="button" data-v="2" onclick="setShutCheckin('energy',2)">2</button>
+                            <button type="button" data-v="3" onclick="setShutCheckin('energy',3)">3</button>
+                            <button type="button" data-v="4" onclick="setShutCheckin('energy',4)">4</button>
+                            <button type="button" data-v="5" onclick="setShutCheckin('energy',5)">5</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="shut-checkin-note">Note</label>
+                    <input type="text" id="shut-checkin-note" placeholder="One line — what stood out?">
+                </div>
+            </div>
+
             <div class="flex gap-sm" style="margin-top:var(--space-lg)">
                 <button class="btn btn-primary" type="button" onclick="shutdownFinish()">Finish day</button>
                 <button class="btn btn-ghost" type="button" onclick="shutdownSkip(4)">Skip &amp; finish</button>

@@ -419,11 +419,44 @@
             <ul class="entry-list compact" id="workout-week-list"></ul>
         </section>
 
-        <!-- 4. Daily check-in (Phase 6 placeholder) -->
+        <!-- 4. Daily check-in -->
         <section class="card today-section" id="section-checkin">
             <p class="section-kicker">Check-in</p>
             <h3 class="card-title">Daily check-in</h3>
-            <p class="text-muted">Coming in Phase 6 — a short end-of-loop pulse will live here.</p>
+            <p class="text-muted" style="margin-bottom:var(--space-md)">
+                A short end-of-day pulse — mood, energy, and an optional note.
+            </p>
+            <div class="checkin-week" id="checkin-week" aria-label="This week’s check-ins"></div>
+            <div class="checkin-form">
+                <div class="field">
+                    <label>Mood</label>
+                    <div class="seg-control" id="checkin-mood-seg" data-value="">
+                        <button type="button" data-v="1" onclick="setCheckinSeg('mood',1)">1</button>
+                        <button type="button" data-v="2" onclick="setCheckinSeg('mood',2)">2</button>
+                        <button type="button" data-v="3" onclick="setCheckinSeg('mood',3)">3</button>
+                        <button type="button" data-v="4" onclick="setCheckinSeg('mood',4)">4</button>
+                        <button type="button" data-v="5" onclick="setCheckinSeg('mood',5)">5</button>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Energy</label>
+                    <div class="seg-control" id="checkin-energy-seg" data-value="">
+                        <button type="button" data-v="1" onclick="setCheckinSeg('energy',1)">1</button>
+                        <button type="button" data-v="2" onclick="setCheckinSeg('energy',2)">2</button>
+                        <button type="button" data-v="3" onclick="setCheckinSeg('energy',3)">3</button>
+                        <button type="button" data-v="4" onclick="setCheckinSeg('energy',4)">4</button>
+                        <button type="button" data-v="5" onclick="setCheckinSeg('energy',5)">5</button>
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="checkin-note">Note (optional)</label>
+                    <input type="text" id="checkin-note" placeholder="One line — what stood out?">
+                </div>
+                <div class="flex gap-sm items-center">
+                    <button class="btn btn-primary btn-sm" type="button" onclick="saveCheckin()">Save check-in</button>
+                    <span class="text-muted" id="checkin-saved" style="font-size:var(--font-size-sm)"></span>
+                </div>
+            </div>
         </section>
     </div>
 

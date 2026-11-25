@@ -1621,3 +1621,50 @@ input[type="range"]:focus {
         align-items: stretch;
     }
 }
+
+/* ── Daily check-in ─────────────────────────────────────────────────────────── */
+
+.checkin-week {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+    margin-bottom: var(--space-md);
+}
+
+.checkin-day {
+    text-align: center;
+    padding: 6px 4px;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.45);
+}
+
+.checkin-day.is-today {
+    border-color: var(--color-accent);
+}
+
+.checkin-day.has-data {
+    background: rgba(60, 100, 140, 0.08);
+}
+
+.checkin-day-label {
+    display: block;
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+    font-weight: 600;
+}
+
+.checkin-day-val {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1rem;
+}
+
+.checkin-form .seg-control {
+    flex-wrap: wrap;
+}
+
+.shutdown-checkin {
+    padding-top: var(--space-md);
+    border-top: 1px dashed var(--color-border-soft);
+}

@@ -1090,6 +1090,73 @@ def history_day(date_str):
     })
 
 
+# ── DAILY CHECK-IN (Phase 6) ───────────────────────────────────────────────────
+
+def _clamp_checkin(n):
+    try:
+        return max(1, min(5, int(n)))
+    except (TypeError, ValueError):
+        return None
+
+
+@dashboard_bp.route("/api/checkin", methods=["GET"])
+def get_checkin():
+    day = parse_date(request.args.get("date"), date.today())
+    log = get_or_create_daily_log(day)
+    db.session.commit()
+    # Last 7 days for a tiny sparkline strip
+    week_start = day - timedelta(days=6)
+    logs = (DailyLog.query
+            .filter(DailyLog.log_date >= week_start, DailyLog.log_date <= day)
+            .order_by(DailyLog.log_date.asc())
+            .all())
+    by_date = {l.log_date: l for l in logs}
+    week = []
+    for i in range(7):
+        d = week_start + timedelta(days=i)
+        row = by_date.get(d)
+        week.append({
+            "date": d.isoformat(),
+            "mood": row.checkin_mood if row else None,
+            "energy": row.checkin_energy if row else None,
+            "is_today": d == day,
+        })
+    return jsonify({
+        "date": day.isoformat(),
+        **log.checkin_to_dict(),
+        "week": week,
+    })
+
+
+@dashboard_bp.route("/api/checkin", methods=["PUT"])
+def put_checkin():
+    data = request.get_json() or {}
+    day = parse_date(data.get("date"), date.today())
+    log = get_or_create_daily_log(day)
+
+    if "mood" in data:
+        raw = data.get("mood")
+        log.checkin_mood = None if raw in ("", None) else _clamp_checkin(raw)
+        if raw not in ("", None) and log.checkin_mood is None:
+            return jsonify({"error": "mood must be 1–5"}), 400
+    if "energy" in data:
+        raw = data.get("energy")
+        log.checkin_energy = None if raw in ("", None) else _clamp_checkin(raw)
+        if raw not in ("", None) and log.checkin_energy is None:
+            return jsonify({"error": "energy must be 1–5"}), 400
+    if "note" in data:
+        note = data.get("note")
+        log.checkin_note = (note or "").strip() or None
+
+    if log.checkin_mood is not None or log.checkin_energy is not None or log.checkin_note:
+        log.checkin_at = datetime.utcnow()
+    else:
+        log.checkin_at = None
+
+    db.session.commit()
+    return jsonify({"date": day.isoformat(), **log.checkin_to_dict()})
+
+
 # ── WEIGHT ─────────────────────────────────────────────────────────────────────
 
 @dashboard_bp.route("/api/weight", methods=["GET"])

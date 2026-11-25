@@ -114,6 +114,23 @@ def migrate_schema():
                     "ALTER TABLE daily_logs "
                     "ADD COLUMN morning_seen BOOLEAN NOT NULL DEFAULT 0"
                 ))
+            # Phase 6: daily check-in
+            if "checkin_mood" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE daily_logs ADD COLUMN checkin_mood INTEGER"
+                ))
+            if "checkin_energy" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE daily_logs ADD COLUMN checkin_energy INTEGER"
+                ))
+            if "checkin_note" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE daily_logs ADD COLUMN checkin_note TEXT"
+                ))
+            if "checkin_at" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE daily_logs ADD COLUMN checkin_at DATETIME"
+                ))
 
     # Phase 3: evening shutdown replaces "Next Day To-Dos" routine step
     if "routine_steps" in tables:

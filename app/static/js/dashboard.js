@@ -22,6 +22,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         loadSteps(),
         loadWorkouts(),
         loadRoutines(),
+        loadCheckin(),
     ]);
     applyRoutineAutoExpand();
     await loadMorningBrief();
@@ -1555,6 +1556,75 @@ async function toggleRoutineItem(completionId) {
         if (updated.completed && isWeightRoutineStep(updated.step_title)) {
             focusWeightInput();
         }
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+// ── DAILY CHECK-IN ────────────────────────────────────────────────────────────
+
+function setCheckinSeg(field, value) {
+    const seg = document.getElementById(`checkin-${field}-seg`);
+    if (!seg) return;
+    seg.dataset.value = String(value);
+    seg.querySelectorAll("button").forEach(b => {
+        b.classList.toggle("active", Number(b.dataset.v) === value);
+    });
+}
+
+function renderCheckinWeek(week) {
+    const el = document.getElementById("checkin-week");
+    if (!el) return;
+    const labels = ["M", "T", "W", "T", "F", "S", "S"];
+    el.innerHTML = (week || []).map((d, i) => {
+        const mood = d.mood != null ? d.mood : "·";
+        const cls = [
+            "checkin-day",
+            d.is_today ? "is-today" : "",
+            d.mood != null ? "has-data" : "",
+        ].filter(Boolean).join(" ");
+        return `<div class="${cls}" title="${escHtml(d.date)}${d.mood != null ? ` · mood ${d.mood}` : ""}">
+            <span class="checkin-day-label">${labels[i] || ""}</span>
+            <span class="checkin-day-val">${mood}</span>
+        </div>`;
+    }).join("");
+}
+
+async function loadCheckin() {
+    try {
+        const data = await api.get(`/today/api/checkin?date=${localISODate()}`);
+        if (data.mood) setCheckinSeg("mood", data.mood);
+        if (data.energy) setCheckinSeg("energy", data.energy);
+        const note = document.getElementById("checkin-note");
+        if (note) note.value = data.note || "";
+        const saved = document.getElementById("checkin-saved");
+        if (saved) {
+            saved.textContent = data.saved
+                ? (data.checkin_at ? `Saved ${data.checkin_at.slice(0, 16).replace("T", " ")}` : "Saved")
+                : "";
+        }
+        renderCheckinWeek(data.week || []);
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+async function saveCheckin() {
+    const mood = document.getElementById("checkin-mood-seg")?.dataset.value;
+    const energy = document.getElementById("checkin-energy-seg")?.dataset.value;
+    const note = document.getElementById("checkin-note")?.value.trim() || null;
+    if (!mood && !energy && !note) {
+        return showToast("Pick mood, energy, or add a note", "error");
+    }
+    try {
+        await api.put("/today/api/checkin", {
+            date: localISODate(),
+            mood: mood ? Number(mood) : null,
+            energy: energy ? Number(energy) : null,
+            note,
+        });
+        await loadCheckin();
+        showToast("Check-in saved", "success");
     } catch (e) {
         showToast(e.message, "error");
     }
