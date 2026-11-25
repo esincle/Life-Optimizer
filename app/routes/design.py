@@ -1,13 +1,48 @@
+import re
 from flask import Blueprint, render_template, request, jsonify
 from app.extensions import db
-from app.models import RoutineStep, Technique, JournalPrompt
+from app.models import RoutineStep, Technique, JournalPrompt, AppSettings
 
 design_bp = Blueprint("design", __name__, url_prefix="/design")
+
+_TIME_RE = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
+
+
+def get_or_create_app_settings():
+    row = AppSettings.query.first()
+    if not row:
+        row = AppSettings(morning_until="12:00", evening_from="18:00")
+        db.session.add(row)
+        db.session.commit()
+    return row
 
 
 @design_bp.route("/")
 def index():
     return render_template("design/index.html")
+
+
+@design_bp.route("/api/settings", methods=["GET"])
+def get_settings():
+    return jsonify(get_or_create_app_settings().to_dict())
+
+
+@design_bp.route("/api/settings", methods=["PUT"])
+def update_settings():
+    data = request.get_json() or {}
+    row = get_or_create_app_settings()
+    if "morning_until" in data:
+        val = (data.get("morning_until") or "").strip()
+        if not _TIME_RE.match(val):
+            return jsonify({"error": "morning_until must be HH:MM"}), 400
+        row.morning_until = val
+    if "evening_from" in data:
+        val = (data.get("evening_from") or "").strip()
+        if not _TIME_RE.match(val):
+            return jsonify({"error": "evening_from must be HH:MM"}), 400
+        row.evening_from = val
+    db.session.commit()
+    return jsonify(row.to_dict())
 
 
 # ── ROUTINE STEPS ──────────────────────────────────────────────────────────────

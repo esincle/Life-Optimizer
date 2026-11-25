@@ -13,11 +13,15 @@ def create_app(config=DevelopmentConfig):
     from app.routes.tracker import tracker_bp
     from app.routes.journal import journal_bp
     from app.routes.dashboard import dashboard_bp
+    from app.routes.review import review_bp
+    from app.routes.insights import insights_bp
 
     app.register_blueprint(design_bp)
     app.register_blueprint(tracker_bp)
     app.register_blueprint(journal_bp)
     app.register_blueprint(dashboard_bp)
+    app.register_blueprint(review_bp)
+    app.register_blueprint(insights_bp)
 
     @app.route("/")
     def index():

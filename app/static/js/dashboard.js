@@ -4,13 +4,26 @@ function localISODate(d = new Date()) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+let mealListExpanded = false;
+let appSettings = { morning_until: "12:00", evening_from: "18:00" };
+let currentTodoBucket = "today";
+
 document.addEventListener("DOMContentLoaded", async () => {
     const today = new Date();
     document.getElementById("today-date").textContent =
         today.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
     applyBucketFormMode();
-    await Promise.all([loadTodos(), loadGoals(), loadNutrition(), loadSteps(), loadWorkouts()]);
+    await Promise.all([
+        loadAppSettings(),
+        loadTodos(),
+        loadGoals(),
+        loadNutrition(),
+        loadSteps(),
+        loadWorkouts(),
+        loadRoutines(),
+    ]);
+    applyRoutineAutoExpand();
     initPushButton();
 
     ["food-label", "food-cal", "food-pro"].forEach(id => {
@@ -25,6 +38,55 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (e.key === "Enter") { e.preventDefault(); saveSteps(); }
     });
 });
+
+async function loadAppSettings() {
+    try {
+        appSettings = await api.get("/design/api/settings");
+    } catch (e) {
+        appSettings = { morning_until: "12:00", evening_from: "18:00" };
+    }
+}
+
+function parseHHMM(s) {
+    const [h, m] = (s || "0:0").split(":").map(Number);
+    return (h || 0) * 60 + (m || 0);
+}
+
+function applyRoutineAutoExpand() {
+    const now = new Date();
+    const mins = now.getHours() * 60 + now.getMinutes();
+    const morningUntil = parseHHMM(appSettings.morning_until || "12:00");
+    const eveningFrom = parseHHMM(appSettings.evening_from || "18:00");
+    const openMorning = mins < morningUntil;
+    const openEvening = mins >= eveningFrom;
+    setRoutineCollapse("morning", openMorning);
+    setRoutineCollapse("evening", openEvening);
+    // Midday: both collapsed unless empty
+    if (!openMorning && !openEvening) {
+        setRoutineCollapse("morning", false);
+        setRoutineCollapse("evening", false);
+    }
+}
+
+function setRoutineCollapse(routine, open) {
+    const el = document.getElementById(`${routine}-routine-card`);
+    if (!el || el.classList.contains("hidden")) return;
+    el.classList.toggle("open", !!open);
+}
+
+function toggleRoutineCollapse(routine) {
+    const el = document.getElementById(`${routine}-routine-card`);
+    if (!el) return;
+    el.classList.toggle("open");
+}
+
+function toggleMealList() {
+    mealListExpanded = !mealListExpanded;
+    const list = document.getElementById("food-list");
+    const chev = document.getElementById("meal-collapse-chevron");
+    list?.classList.toggle("meal-list-collapsed", !mealListExpanded);
+    if (chev) chev.textContent = mealListExpanded ? "▾" : "▸";
+}
 
 function initPushButton() {
     const btn = document.getElementById("btn-enable-push");
@@ -56,8 +118,6 @@ function initPushButton() {
 
 // ── PLANNING TABS + TODO BUCKETS ──────────────────────────────────────────────
 
-let currentTodoBucket = "today";
-
 const BUCKET_COPY = {
     today: {
         title: "Today’s to-dos",
@@ -80,11 +140,14 @@ const BUCKET_COPY = {
 };
 
 function switchMainTab(tab, btn) {
+    const more = document.getElementById("planning-more");
+    if (more) more.open = true;
     document.querySelectorAll("#main-planning-tabs .tab-btn").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    document.getElementById("main-tab-todo").classList.toggle("active", tab === "todo");
-    document.getElementById("main-tab-goals").classList.toggle("active", tab === "goals");
-    document.getElementById("main-tab-history").classList.toggle("active", tab === "history");
+    if (btn) btn.classList.add("active");
+    document.getElementById("main-tab-todo")?.classList.toggle("active", tab === "todo");
+    document.getElementById("main-tab-goals")?.classList.toggle("active", tab === "goals");
+    document.getElementById("main-tab-history")?.classList.toggle("active", tab === "history");
+    if (tab === "todo") loadTodos();
     if (tab === "goals") loadGoals();
     if (tab === "history") loadHistoryList();
 }
@@ -653,8 +716,17 @@ async function loadNutrition() {
         : 0;
 
     document.getElementById("cal-label").textContent = food_logged
-        ? `${totals.calories} kcal`
+        ? `${totals.calories} kcal in`
         : "Not tracked";
+    const remainingEl = document.getElementById("cal-remaining");
+    if (remainingEl) {
+        if (food_logged) {
+            const rem = tdee.tdee - totals.calories;
+            remainingEl.textContent = rem >= 0 ? `${rem}` : `${rem}`;
+        } else {
+            remainingEl.textContent = String(tdee.tdee);
+        }
+    }
     if (food_logged && deficit != null) {
         document.getElementById("deficit-line").textContent =
             `${formatDeficit(deficit)} · TDEE ${tdee.tdee}`;
@@ -662,11 +734,11 @@ async function loadNutrition() {
             `deficit-line ${deficit > 0 ? "is-deficit" : deficit < 0 ? "is-surplus" : ""}`;
     } else {
         document.getElementById("deficit-line").textContent =
-            "No calorie deficit yet — log food to track balance";
+            food_logged ? `TDEE ${tdee.tdee}` : "Log food to track remaining";
         document.getElementById("deficit-line").className = "deficit-line";
     }
     document.getElementById("tdee-breakdown").textContent =
-        `TDEE ${tdee.tdee} = ${tdee.baseline} baseline + ${tdee.from_steps} from steps (${tdee.steps.toLocaleString()}) + ${tdee.from_workouts} from workouts`;
+        `TDEE ${tdee.tdee} = ${tdee.baseline} + ${tdee.from_steps} steps + ${tdee.from_workouts} workouts`;
 
     const proLabel = document.getElementById("pro-label");
     if (!proteinSet) {
@@ -716,6 +788,14 @@ async function loadNutrition() {
                 <button class="btn btn-danger btn-sm" type="button" onclick="deleteFood(${e.id})">✕</button>
             </li>`).join("")
         : `<li class="text-muted" style="padding:var(--space-sm) 0">No food logged today.</li>`;
+    list.classList.toggle("meal-list-collapsed", !mealListExpanded);
+    const mealLabel = document.getElementById("meal-collapse-label");
+    if (mealLabel) {
+        const n = entries.length;
+        mealLabel.textContent = `${n} entr${n === 1 ? "y" : "ies"} · ${totals.calories} kcal`;
+    }
+    const chev = document.getElementById("meal-collapse-chevron");
+    if (chev) chev.textContent = mealListExpanded ? "▾" : "▸";
 }
 
 async function addFood() {
@@ -861,6 +941,90 @@ async function deleteWorkout(id) {
     try {
         await api.delete(`/today/api/workouts/${id}`);
         await Promise.all([loadWorkouts(), loadNutrition()]);
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+// ── ROUTINES (merged from Tracker) ────────────────────────────────────────────
+
+const ROUTINES = ["morning", "evening", "daily"];
+
+async function loadRoutines() {
+    try {
+        const data = await api.post("/tracker/api/today/init", {});
+        renderRoutineCompletions(data.completions || []);
+    } catch (e) {
+        showToast(e.message || "Couldn’t load routines", "error");
+    }
+}
+
+function renderRoutineCompletions(completions) {
+    for (const routine of ROUTINES) {
+        const items = completions.filter(c => c.routine === routine);
+        if (routine === "daily") {
+            const dailyCard = document.getElementById("daily-routine-card");
+            if (dailyCard) {
+                if (items.length === 0) {
+                    dailyCard.classList.add("hidden");
+                    continue;
+                }
+                dailyCard.classList.remove("hidden");
+            }
+        }
+        renderRoutineChecklist(routine, items);
+        updateRoutineProgress(routine, items);
+    }
+}
+
+function renderRoutineChecklist(routine, completions) {
+    const list = document.getElementById(`${routine}-checklist`);
+    if (!list) return;
+    if (completions.length === 0) {
+        list.innerHTML = `<li class="text-muted" style="padding:var(--space-sm) 0">No steps — add some in <a href="/design/">Design</a>.</li>`;
+        return;
+    }
+    list.innerHTML = completions.map(c => routineItemHtml(c)).join("");
+}
+
+function routineItemHtml(c) {
+    const done = c.completed;
+    const durText = c.step_duration ? `<div class="check-meta">${c.step_duration} min</div>` : "";
+    const descText = c.step_description ? `<div class="check-meta">${escHtml(c.step_description)}</div>` : "";
+    return `
+    <li class="check-item ${done ? "done" : ""}" id="item-${c.id}">
+        <div class="check-box ${done ? "checked" : ""}" onclick="toggleRoutineItem(${c.id})">
+            ${done ? "✓" : ""}
+        </div>
+        <div>
+            <div class="check-label">${escHtml(c.step_title)}</div>
+            ${descText}${durText}
+        </div>
+    </li>`;
+}
+
+function updateRoutineProgress(routine, completions) {
+    const total = completions.length;
+    const done = completions.filter(c => c.completed).length;
+    const pct = total > 0 ? Math.round(done / total * 100) : 0;
+    const text = document.getElementById(`${routine}-progress-text`);
+    const bar = document.getElementById(`${routine}-progress-bar`);
+    if (text) text.textContent = `${done} / ${total}`;
+    if (bar) bar.style.width = `${pct}%`;
+}
+
+async function toggleRoutineItem(completionId) {
+    try {
+        const updated = await api.post(`/tracker/api/completion/${completionId}/toggle`, {});
+        const li = document.getElementById(`item-${completionId}`);
+        if (li) li.outerHTML = routineItemHtml(updated);
+        const data = await api.get("/tracker/api/today");
+        for (const routine of ROUTINES) {
+            updateRoutineProgress(
+                routine,
+                (data.completions || []).filter(c => c.routine === routine),
+            );
+        }
     } catch (e) {
         showToast(e.message, "error");
     }

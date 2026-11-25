@@ -1,6 +1,7 @@
 // Design page logic
 
 document.addEventListener("DOMContentLoaded", () => {
+    loadDayLoopSettings();
     loadNutritionGoals();
     loadReminders();
     loadRoutine("morning");
@@ -11,8 +12,34 @@ document.addEventListener("DOMContentLoaded", () => {
     loadPrompts("evening");
     if (location.hash === "#panel-nutrition") {
         document.getElementById("panel-nutrition")?.classList.add("open");
+        document.getElementById("panel-day-loop")?.classList.remove("open");
+    }
+    if (location.hash === "#panel-day-loop") {
+        document.getElementById("panel-day-loop")?.classList.add("open");
     }
 });
+
+async function loadDayLoopSettings() {
+    try {
+        const s = await api.get("/design/api/settings");
+        document.getElementById("design-morning-until").value = s.morning_until || "12:00";
+        document.getElementById("design-evening-from").value = s.evening_from || "18:00";
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+async function saveDayLoopSettings() {
+    try {
+        await api.put("/design/api/settings", {
+            morning_until: document.getElementById("design-morning-until").value,
+            evening_from: document.getElementById("design-evening-from").value,
+        });
+        showToast("Day loop times saved", "success");
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
 
 // ── NUTRITION ─────────────────────────────────────────────────────────────────
 

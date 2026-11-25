@@ -1,5 +1,5 @@
 from datetime import date, timedelta
-from flask import Blueprint, render_template, request, jsonify
+from flask import Blueprint, redirect, url_for, request, jsonify
 from app.extensions import db
 from app.models import DailyLog, RoutineCompletion, RoutineStep, JournalEntry
 
@@ -17,7 +17,8 @@ def get_or_create_log(log_date):
 
 @tracker_bp.route("/")
 def index():
-    return render_template("tracker/index.html")
+    # Phase 1: Tracker merged into Today
+    return redirect(url_for("dashboard.index"))
 
 
 @tracker_bp.route("/api/today", methods=["GET"])

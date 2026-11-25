@@ -341,6 +341,25 @@ class Goal(db.Model):
         }
 
 
+# ── APP SETTINGS (Design / singleton) ──────────────────────────────────────────
+
+class AppSettings(db.Model):
+    """Singleton row for Design-configurable day loop times and caps."""
+    __tablename__ = "app_settings"
+
+    id            = db.Column(db.Integer, primary_key=True)
+    morning_until = db.Column(db.String(5), nullable=False, default="12:00")  # HH:MM
+    evening_from  = db.Column(db.String(5), nullable=False, default="18:00")  # HH:MM
+    updated_at    = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "morning_until": self.morning_until or "12:00",
+            "evening_from": self.evening_from or "18:00",
+        }
+
+
 # ── REMINDERS (browser / computer push) ────────────────────────────────────────
 
 class Reminder(db.Model):
