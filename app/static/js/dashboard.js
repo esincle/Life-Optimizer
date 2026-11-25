@@ -118,12 +118,26 @@ async function loadHistoryList() {
         return;
     }
     list.innerHTML = data.days_list.map(day => {
+        const tracked = day.tracked || {};
         const deficitClass = day.deficit == null
             ? ""
             : day.deficit > 0 ? "hist-deficit" : day.deficit < 0 ? "hist-surplus" : "hist-even";
-        const deficitText = day.deficit == null
-            ? `<span class="hist-pill muted">No food log</span>`
+        // No calorie deficit pill unless calories were tracked that day
+        const deficitText = !tracked.calories || day.deficit == null
+            ? `<span class="hist-pill muted">Calories not tracked</span>`
             : `<span class="hist-pill ${deficitClass}">${formatDeficitShort(day.deficit)} kcal</span>`;
+        const proteinText = tracked.protein
+            ? `${day.protein}g pro${day.protein_hit ? " ✓" : ""}`
+            : "Protein —";
+        const stepsText = tracked.steps
+            ? `${(day.steps || 0).toLocaleString()} steps${day.steps_hit ? " ✓" : ""}`
+            : "Steps —";
+        const workoutText = tracked.workouts
+            ? `${day.workouts_count} workout${day.workouts_count === 1 ? "" : "s"}`
+            : "Workouts —";
+        const todosText = tracked.todos
+            ? `${day.todos_completed} done`
+            : "Todos —";
         const selected = historySelectedDate === day.date ? " selected" : "";
         return `
         <li class="history-row${selected}${day.has_activity ? "" : " empty-day"}" onclick="openHistoryDay('${day.date}')">
@@ -133,10 +147,10 @@ async function loadHistoryList() {
             </div>
             <div class="history-row-metrics">
                 ${deficitText}
-                <span class="hist-stat" title="Protein">${day.protein}g pro${day.protein_hit ? " ✓" : ""}</span>
-                <span class="hist-stat" title="Steps">${(day.steps || 0).toLocaleString()} steps${day.steps_hit ? " ✓" : ""}</span>
-                <span class="hist-stat" title="Workouts">${day.workouts_count} workout${day.workouts_count === 1 ? "" : "s"}</span>
-                <span class="hist-stat" title="Todos completed">${day.todos_completed} done</span>
+                <span class="hist-stat" title="Protein">${proteinText}</span>
+                <span class="hist-stat" title="Steps">${stepsText}</span>
+                <span class="hist-stat" title="Workouts">${workoutText}</span>
+                <span class="hist-stat" title="Todos completed">${todosText}</span>
             </div>
         </li>`;
     }).join("");
@@ -153,13 +167,14 @@ async function openHistoryDay(dateStr) {
 
     const data = await api.get(`/today/api/history/${dateStr}`);
     const o = data.overview;
-    const deficitLabel = o.deficit == null
-        ? "No food logged"
+    const tracked = o.tracked || {};
+    const deficitLabel = !tracked.calories || o.deficit == null
+        ? "Calories not tracked — no deficit"
         : formatDeficit(o.deficit);
     document.getElementById("history-detail-stats").innerHTML = `
-        <div class="history-stat-card ${o.deficit == null ? "" : o.deficit > 0 ? "is-deficit" : o.deficit < 0 ? "is-surplus" : ""}">
+        <div class="history-stat-card ${!tracked.calories || o.deficit == null ? "" : o.deficit > 0 ? "is-deficit" : o.deficit < 0 ? "is-surplus" : ""}">
             <div class="week-stat-label">Calorie balance</div>
-            <div class="week-stat-value">${o.deficit == null ? "—" : formatDeficitShort(o.deficit)}</div>
+            <div class="week-stat-value">${!tracked.calories || o.deficit == null ? "—" : formatDeficitShort(o.deficit)}</div>
             <div class="week-stat-meta">${deficitLabel}</div>
         </div>
         <div class="history-stat-card">
@@ -169,17 +184,17 @@ async function openHistoryDay(dateStr) {
         </div>
         <div class="history-stat-card">
             <div class="week-stat-label">Intake / protein</div>
-            <div class="week-stat-value">${o.intake_calories}</div>
-            <div class="week-stat-meta">${o.protein} / ${o.protein_goal} g${o.protein_hit ? " · on target" : ""}</div>
+            <div class="week-stat-value">${tracked.calories ? o.intake_calories : "—"}</div>
+            <div class="week-stat-meta">${tracked.protein ? `${o.protein} / ${o.protein_goal} g${o.protein_hit ? " · on target" : ""}` : "Protein not tracked"}</div>
         </div>
         <div class="history-stat-card">
             <div class="week-stat-label">Activity</div>
-            <div class="week-stat-value">${(o.steps || 0).toLocaleString()}</div>
-            <div class="week-stat-meta">${o.workouts_count} workouts · ${o.todos_completed} todos done</div>
+            <div class="week-stat-value">${tracked.steps ? (o.steps || 0).toLocaleString() : "—"}</div>
+            <div class="week-stat-meta">${tracked.workouts ? `${o.workouts_count} workouts` : "Workouts —"} · ${tracked.todos ? `${o.todos_completed} todos done` : "Todos —"}</div>
         </div>
     `;
 
-    document.getElementById("hist-steps").value = o.steps || "";
+    document.getElementById("hist-steps").value = tracked.steps ? (o.steps || 0) : "";
 
     const foodList = document.getElementById("hist-food-list");
     foodList.innerHTML = data.entries.length
@@ -626,27 +641,42 @@ async function loadNutrition() {
         api.get("/today/api/nutrition/today"),
         api.get("/today/api/nutrition/week"),
     ]);
-    const { targets, totals, deficit, entries, tdee } = today;
+    const { targets, totals, deficit, entries, tdee, food_logged } = today;
     const proPct = targets.protein_goal
         ? Math.min(100, Math.round(totals.protein / targets.protein_goal * 100))
         : 0;
 
-    document.getElementById("cal-label").textContent = `${totals.calories} kcal`;
-    document.getElementById("deficit-line").textContent =
-        `${formatDeficit(deficit)} · TDEE ${tdee.tdee}`;
-    document.getElementById("deficit-line").className =
-        `deficit-line ${deficit > 0 ? "is-deficit" : deficit < 0 ? "is-surplus" : ""}`;
+    document.getElementById("cal-label").textContent = food_logged
+        ? `${totals.calories} kcal`
+        : "Not tracked";
+    if (food_logged && deficit != null) {
+        document.getElementById("deficit-line").textContent =
+            `${formatDeficit(deficit)} · TDEE ${tdee.tdee}`;
+        document.getElementById("deficit-line").className =
+            `deficit-line ${deficit > 0 ? "is-deficit" : deficit < 0 ? "is-surplus" : ""}`;
+    } else {
+        document.getElementById("deficit-line").textContent =
+            "No calorie deficit yet — log food to track balance";
+        document.getElementById("deficit-line").className = "deficit-line";
+    }
     document.getElementById("tdee-breakdown").textContent =
         `TDEE ${tdee.tdee} = ${tdee.baseline} baseline + ${tdee.from_steps} from steps (${tdee.steps.toLocaleString()}) + ${tdee.from_workouts} from workouts`;
 
-    document.getElementById("pro-label").textContent = `${totals.protein} / ${targets.protein_goal} g`;
-    document.getElementById("pro-bar").style.width = `${proPct}%`;
+    document.getElementById("pro-label").textContent = food_logged
+        ? `${totals.protein} / ${targets.protein_goal} g`
+        : `— / ${targets.protein_goal} g`;
+    document.getElementById("pro-bar").style.width = food_logged ? `${proPct}%` : "0%";
 
-    document.getElementById("week-deficit").textContent = formatDeficit(week.total_deficit).replace(" kcal", "");
-    document.getElementById("week-deficit-meta").textContent =
-        week.days_logged
-            ? `${week.days_logged} logged day${week.days_logged === 1 ? "" : "s"} · avg ${formatDeficit(week.avg_deficit)}`
-            : "No food logged this week";
+    if (week.days_logged) {
+        document.getElementById("week-deficit").textContent =
+            formatDeficit(week.total_deficit).replace(" kcal", "");
+        document.getElementById("week-deficit-meta").textContent =
+            `${week.days_logged} food-logged day${week.days_logged === 1 ? "" : "s"} · avg ${formatDeficit(week.avg_deficit)}`;
+    } else {
+        document.getElementById("week-deficit").textContent = "—";
+        document.getElementById("week-deficit-meta").textContent =
+            "No food-logged days this week";
+    }
     document.getElementById("week-protein-hits").textContent =
         `${week.protein_hit_days}/${week.days_logged || 0}`;
 
@@ -725,6 +755,20 @@ async function saveSteps() {
 
 // ── WORKOUTS ──────────────────────────────────────────────────────────────────
 
+function workoutRowHtml(w, { showDate = false } = {}) {
+    return `
+    <li class="entry-list-item food-row">
+        <div>
+            <div class="entry-list-snippet">
+                <span class="kind-badge kind-${w.kind}">${kindLabel(w.kind)}</span>
+                ${escHtml(w.title || "Session")}
+            </div>
+            <div class="entry-list-date">${showDate ? `${escHtml(w.log_date)} · ` : ""}${w.duration_minutes ? `${w.duration_minutes} min` : ""}${w.calories_burned ? ` · ${w.calories_burned} kcal` : ""}</div>
+        </div>
+        <button class="btn btn-danger btn-sm" type="button" onclick="deleteWorkout(${w.id})">✕</button>
+    </li>`;
+}
+
 async function loadWorkouts() {
     const data = await api.get("/today/api/workouts/overview");
     document.getElementById("upper-stat").textContent = data.upper.count;
@@ -737,20 +781,16 @@ async function loadWorkouts() {
     document.getElementById("zone2-meta").textContent =
         `${data.zone2.minutes} min${data.zone2.today ? " · today ✓" : ""}`;
 
-    const list = document.getElementById("workout-list");
-    list.innerHTML = data.workouts.length
-        ? data.workouts.map(w => `
-            <li class="entry-list-item food-row">
-                <div>
-                    <div class="entry-list-snippet">
-                        <span class="kind-badge kind-${w.kind}">${kindLabel(w.kind)}</span>
-                        ${escHtml(w.title || "Session")}
-                    </div>
-                    <div class="entry-list-date">${escHtml(w.log_date)}${w.duration_minutes ? ` · ${w.duration_minutes} min` : ""}${w.calories_burned ? ` · ${w.calories_burned} kcal` : ""}</div>
-                </div>
-                <button class="btn btn-danger btn-sm" type="button" onclick="deleteWorkout(${w.id})">✕</button>
-            </li>`).join("")
+    const weekList = data.week_workouts || data.workouts || [];
+    const todayList = data.today_workouts || [];
+
+    document.getElementById("workout-week-list").innerHTML = weekList.length
+        ? weekList.map(w => workoutRowHtml(w, { showDate: true })).join("")
         : `<li class="text-muted" style="padding:var(--space-sm) 0">No workouts logged this week.</li>`;
+
+    document.getElementById("workout-today-list").innerHTML = todayList.length
+        ? todayList.map(w => workoutRowHtml(w)).join("")
+        : `<li class="text-muted" style="padding:var(--space-sm) 0">No workout logged today — add one above.</li>`;
 }
 
 async function addWorkout() {

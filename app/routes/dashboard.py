@@ -380,13 +380,16 @@ def nutrition_today():
     calories = sum(e.calories for e in entries)
     protein = sum(e.protein for e in entries)
     tdee_info = compute_tdee_for_day(today, target)
-    deficit = tdee_info["tdee"] - calories  # positive = deficit
+    food_logged = len(entries) > 0
+    # No calorie deficit unless food was tracked today
+    deficit = (tdee_info["tdee"] - calories) if food_logged else None
     return jsonify({
         "date": today.isoformat(),
         "targets": target.to_dict(),
         "totals": {"calories": calories, "protein": protein},
         "tdee": tdee_info,
-        "deficit": deficit,  # + deficit, − surplus
+        "food_logged": food_logged,
+        "deficit": deficit,  # None if calories not tracked; else + deficit / − surplus
         "entries": [e.to_dict() for e in entries],
     })
 
@@ -524,6 +527,7 @@ def build_day_overview(d, target=None):
     protein = sum(e.protein for e in entries)
     tdee_info = compute_tdee_for_day(d, target)
     food_logged = len(entries) > 0
+    # Calorie deficit only when food/calories were tracked that day
     deficit = (tdee_info["tdee"] - calories) if food_logged else None
 
     protein_hit = False
@@ -533,6 +537,7 @@ def build_day_overview(d, target=None):
         protein_hit = lo <= protein <= hi
 
     workouts = Workout.query.filter_by(log_date=d).all()
+    steps_logged = DailySteps.query.filter_by(log_date=d).first() is not None
     start, end = _day_bounds(d)
     todos_completed = Todo.query.filter(
         Todo.done.is_(True),
@@ -542,31 +547,38 @@ def build_day_overview(d, target=None):
     ).count()
     today_todos_open = Todo.query.filter_by(bucket="today", for_date=d, done=False).count()
     today_todos_done = Todo.query.filter_by(bucket="today", for_date=d, done=True).count()
+    workouts_logged = len(workouts) > 0
+    todos_tracked = todos_completed > 0 or today_todos_open > 0 or today_todos_done > 0
 
     has_activity = (
         food_logged
-        or tdee_info["steps"] > 0
-        or len(workouts) > 0
-        or todos_completed > 0
-        or today_todos_open > 0
-        or today_todos_done > 0
+        or steps_logged
+        or workouts_logged
+        or todos_tracked
     )
 
     return {
         "date": d.isoformat(),
         "has_activity": has_activity,
-        "intake_calories": calories,
-        "protein": protein,
+        "tracked": {
+            "calories": food_logged,
+            "protein": food_logged,
+            "steps": steps_logged,
+            "workouts": workouts_logged,
+            "todos": todos_tracked,
+        },
+        "intake_calories": calories if food_logged else None,
+        "protein": protein if food_logged else None,
         "protein_goal": target.protein_goal,
-        "protein_hit": protein_hit,
+        "protein_hit": protein_hit if food_logged else None,
         "tdee": tdee_info,
         "deficit": deficit,
-        "steps": tdee_info["steps"],
+        "steps": tdee_info["steps"] if steps_logged else None,
         "steps_goal": target.steps_goal,
-        "steps_hit": bool(target.steps_goal and tdee_info["steps"] >= target.steps_goal),
-        "workouts_count": len(workouts),
-        "workout_kcal": sum(w.calories_burned or 0 for w in workouts),
-        "todos_completed": todos_completed,
+        "steps_hit": bool(target.steps_goal and steps_logged and tdee_info["steps"] >= target.steps_goal),
+        "workouts_count": len(workouts) if workouts_logged else None,
+        "workout_kcal": sum(w.calories_burned or 0 for w in workouts) if workouts_logged else None,
+        "todos_completed": todos_completed if todos_tracked else None,
         "today_todos_open": today_todos_open,
         "today_todos_done": today_todos_done,
         "food_entries": len(entries),
@@ -749,7 +761,7 @@ def list_workouts():
 
 @dashboard_bp.route("/api/workouts/overview", methods=["GET"])
 def workouts_overview():
-    """Week: upper/lower counts (full counts for both) + overall Zone 2."""
+    """Week overview counts + today's sessions for the day input panel."""
     today = date.today()
     week_start = today - timedelta(days=today.weekday())
     week_end = week_start + timedelta(days=6)
@@ -758,6 +770,7 @@ def workouts_overview():
                 .all())
 
     zone2 = [w for w in workouts if w.kind == "zone2"]
+    today_workouts = [w for w in workouts if w.log_date == today]
     upper_count = sum(1 for w in workouts if w.kind in ("upper", "full"))
     lower_count = sum(1 for w in workouts if w.kind in ("lower", "full"))
     full_count = sum(1 for w in workouts if w.kind == "full")
@@ -767,18 +780,21 @@ def workouts_overview():
         "week_end": week_end.isoformat(),
         "upper": {
             "count": upper_count,
-            "today": any(w.log_date == today and w.kind in ("upper", "full") for w in workouts),
+            "today": any(w.kind in ("upper", "full") for w in today_workouts),
         },
         "lower": {
             "count": lower_count,
-            "today": any(w.log_date == today and w.kind in ("lower", "full") for w in workouts),
+            "today": any(w.kind in ("lower", "full") for w in today_workouts),
         },
         "full": {"count": full_count},
         "zone2": {
             "count": len(zone2),
             "minutes": sum(w.duration_minutes or 0 for w in zone2),
-            "today": any(w.log_date == today for w in zone2),
+            "today": any(w.kind == "zone2" for w in today_workouts),
         },
+        "week_workouts": [w.to_dict() for w in sorted(workouts, key=lambda w: (w.log_date, w.id), reverse=True)],
+        "today_workouts": [w.to_dict() for w in sorted(today_workouts, key=lambda w: w.id, reverse=True)],
+        # Back-compat for older clients
         "workouts": [w.to_dict() for w in sorted(workouts, key=lambda w: (w.log_date, w.id), reverse=True)],
     })
 
