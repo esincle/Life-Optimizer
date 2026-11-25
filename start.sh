@@ -14,7 +14,18 @@ if [ ! -x ".venv/bin/python" ]; then
   .venv/bin/python -m pip install -r requirements.txt
 fi
 
+LAN_IP=""
+if command -v ipconfig >/dev/null 2>&1; then
+  LAN_IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)"
+elif command -v hostname >/dev/null 2>&1; then
+  LAN_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+fi
+
 echo "Starting Life Optimizer at http://127.0.0.1:5000/today/"
+if [ -n "$LAN_IP" ]; then
+  echo "iPhone (same Wi-Fi): http://${LAN_IP}:5000/today/"
+  echo "Add to Home Screen steps: docs/iphone-pwa.md"
+fi
 if command -v open >/dev/null 2>&1; then
   (sleep 1; open "http://127.0.0.1:5000/today/") &
 elif command -v xdg-open >/dev/null 2>&1; then

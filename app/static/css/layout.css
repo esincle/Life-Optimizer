@@ -9,18 +9,27 @@
     left: 0;
     right: 0;
     z-index: 100;
+    padding-top: env(safe-area-inset-top);
 }
 
 body {
-    padding-top: 60px;
+    padding-top: calc(60px + env(safe-area-inset-top));
+}
+
+/* Bottom tab bar — phone / PWA only */
+.nav-mobile {
+    display: none;
 }
 
 @media print {
-    .nav {
+    .nav,
+    .nav-mobile {
         position: static;
+        display: none;
     }
     body {
         padding-top: 0;
+        padding-bottom: 0;
     }
     .app-atmosphere {
         display: none;
@@ -83,6 +92,191 @@ body {
     font-size: var(--font-size-sm);
     font-weight: 500;
     color: var(--color-text-muted);
+}
+
+/* ── MOBILE / iPHONE PWA ─────────────────────────────────────────────────────── */
+
+@media (max-width: 700px) {
+    .nav {
+        /* Compact top brand bar; primary tabs move to bottom */
+        border-bottom-color: rgba(213, 221, 227, 0.6);
+    }
+
+    .nav-inner {
+        height: 52px;
+        padding: 0 var(--space-md);
+        gap: var(--space-md);
+    }
+
+    .nav-links-desktop,
+    .nav-date {
+        display: none;
+    }
+
+    .nav-brand {
+        font-size: 1.05rem;
+    }
+
+    body {
+        padding-top: calc(52px + env(safe-area-inset-top));
+        padding-bottom: calc(64px + env(safe-area-inset-bottom));
+    }
+
+    .nav-mobile {
+        display: flex;
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 100;
+        align-items: stretch;
+        justify-content: space-around;
+        gap: 2px;
+        min-height: 56px;
+        padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+        background: rgba(255, 255, 255, 0.96);
+        border-top: 1px solid rgba(213, 221, 227, 0.9);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+    }
+
+    .nav-mobile-link {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        padding: 8px 4px;
+        border-radius: var(--radius-sm);
+        color: var(--color-text-muted);
+        font-family: var(--font-display);
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        text-align: center;
+        -webkit-tap-highlight-color: transparent;
+        transition: background var(--transition), color var(--transition);
+    }
+
+    .nav-mobile-link.active {
+        color: var(--color-accent-dark);
+        background: var(--color-accent-light);
+    }
+
+    .nav-mobile-label {
+        line-height: 1.2;
+    }
+
+    .page {
+        padding: var(--space-md) var(--space-md) var(--space-xl);
+    }
+
+    .page-today .today-hero {
+        padding-top: var(--space-sm);
+        margin-bottom: var(--space-md);
+    }
+
+    .today-hero-copy .brand-mark {
+        font-size: clamp(1.45rem, 7vw, 1.9rem);
+    }
+
+    .today-header-actions {
+        width: 100%;
+        align-items: stretch;
+    }
+
+    .today-header-actions .btn {
+        justify-content: center;
+        min-height: 44px;
+    }
+
+    .card {
+        padding: var(--space-md);
+    }
+
+    .card-header {
+        flex-wrap: wrap;
+        gap: var(--space-sm);
+    }
+
+    .today-stack {
+        gap: var(--space-md);
+    }
+
+    .btn,
+    .chip,
+    .routine-collapse-header,
+    .meal-collapse-toggle,
+    .tab-btn {
+        min-height: 44px;
+    }
+
+    .btn-sm {
+        min-height: 40px;
+        padding: 8px 12px;
+    }
+
+    .seg-control {
+        width: 100%;
+    }
+
+    .seg-control button {
+        flex: 1;
+        min-height: 44px;
+        padding: 10px 8px;
+        font-size: var(--font-size-sm);
+    }
+
+    .add-form-row {
+        flex-wrap: wrap;
+    }
+
+    .add-form-row input,
+    .add-form-row select {
+        min-width: 0;
+        flex: 1 1 120px;
+    }
+
+    .add-form-row .btn {
+        flex: 1 1 auto;
+    }
+
+    .plan-time-bar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-sm);
+    }
+
+    .plan-avail-edit {
+        width: 100%;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--space-sm);
+    }
+
+    .body-metrics,
+    .body-week-row {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .workout-overview-3 {
+        grid-template-columns: 1fr 1fr 1fr;
+    }
+
+    .checkin-week {
+        gap: 4px;
+    }
+
+    .checkin-day {
+        padding: 8px 2px;
+    }
+
+    #toast-container {
+        bottom: calc(72px + env(safe-area-inset-bottom));
+        left: var(--space-md);
+        right: var(--space-md);
+    }
 }
 
 /* ── PAGE WRAPPER ────────────────────────────────────────────────────────────── */

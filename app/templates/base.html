@@ -2,8 +2,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>{% block title %}Life Optimizer{% endblock %}</title>
+    <meta name="description" content="Daily planning, routines, nutrition, and review — local personal system.">
+    <meta name="theme-color" content="#0f6b5c">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Life Optimizer">
+    <meta name="format-detection" content="telephone=no">
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='icons/favicon-32.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -14,10 +24,10 @@
 </head>
 <body>
     <div class="app-atmosphere" aria-hidden="true"></div>
-    <nav class="nav">
+    <nav class="nav" aria-label="Primary">
         <div class="nav-inner">
             <a href="/" class="nav-brand">Life <span>Optimizer</span></a>
-            <div class="nav-links">
+            <div class="nav-links nav-links-desktop">
                 <a href="/today/" class="nav-link {% if request.path.startswith('/today') or request.path == '/' %}active{% endif %}">
                     Today
                 </a>
@@ -36,6 +46,24 @@
             </div>
             <span class="nav-date" id="nav-date"></span>
         </div>
+    </nav>
+
+    <nav class="nav-mobile" aria-label="Primary mobile">
+        <a href="/today/" class="nav-mobile-link {% if request.path.startswith('/today') or request.path == '/' %}active{% endif %}">
+            <span class="nav-mobile-label">Today</span>
+        </a>
+        <a href="/review/" class="nav-mobile-link {% if request.path.startswith('/review') %}active{% endif %}">
+            <span class="nav-mobile-label">Review</span>
+        </a>
+        <a href="/insights/" class="nav-mobile-link {% if request.path.startswith('/insights') %}active{% endif %}">
+            <span class="nav-mobile-label">Insights</span>
+        </a>
+        <a href="/journal/" class="nav-mobile-link {% if request.path.startswith('/journal') %}active{% endif %}">
+            <span class="nav-mobile-label">Journal</span>
+        </a>
+        <a href="/design/" class="nav-mobile-link {% if request.path.startswith('/design') %}active{% endif %}">
+            <span class="nav-mobile-label">Design</span>
+        </a>
     </nav>
 
     <main class="app-main">

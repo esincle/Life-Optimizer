@@ -7,6 +7,13 @@ def create_app(config=DevelopmentConfig):
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(config)
 
+    # Safari / Chromium expect this MIME for the web app manifest
+    try:
+        import mimetypes
+        mimetypes.add_type("application/manifest+json", ".webmanifest")
+    except Exception:
+        pass
+
     db.init_app(app)
 
     from app.routes.design import design_bp
