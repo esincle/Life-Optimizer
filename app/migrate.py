@@ -5,6 +5,9 @@ from app.extensions import db
 
 def migrate_schema():
     engine = db.engine
+    # These ALTER tweaks are SQLite-only (local upgrades). Fresh Postgres uses create_all.
+    if engine.dialect.name != "sqlite":
+        return
     insp = inspect(engine)
     tables = set(insp.get_table_names())
 
