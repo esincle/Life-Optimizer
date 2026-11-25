@@ -24,6 +24,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         loadRoutines(),
     ]);
     applyRoutineAutoExpand();
+    await loadMorningBrief();
+    updateShutdownButton();
     initPushButton();
 
     ["food-label", "food-cal", "food-pro"].forEach(id => {
@@ -66,6 +68,72 @@ function applyRoutineAutoExpand() {
         setRoutineCollapse("morning", false);
         setRoutineCollapse("evening", false);
     }
+}
+
+function formatPlanHours(minutes, availableHours) {
+    const h = Math.floor((minutes || 0) / 60);
+    const m = (minutes || 0) % 60;
+    const planned = h && m ? `${h}h ${m}m` : h ? `${h}h` : m ? `${m}m` : "0m";
+    const avail = availableHours == null ? "—" : `${availableHours}h`;
+    return { planned, avail };
+}
+
+async function loadMorningBrief() {
+    const banner = document.getElementById("morning-brief");
+    const textEl = document.getElementById("morning-brief-text");
+    if (!banner || !textEl) return;
+    try {
+        const brief = await api.get("/review/api/morning-brief");
+        window._morningBrief = brief;
+        updateShutdownButton(brief);
+
+        if (!brief.show_banner) {
+            banner.classList.add("hidden");
+            return;
+        }
+
+        const names = (brief.priorities || []).map(p => p.title).filter(Boolean);
+        const pri = names.length
+            ? `Your ${names.length} priorit${names.length === 1 ? "y" : "ies"} today: ${names.join(" · ")}`
+            : "No priorities set yet — add them above or plan tonight.";
+        const { planned, avail } = formatPlanHours(brief.planned_minutes, brief.available_hours);
+        const workout = brief.workout_suggestion || "—";
+        textEl.textContent = `${pri} · Planned ${planned} / ${avail} free · Workout: ${workout}`;
+        banner.classList.remove("hidden");
+        // First visit: keep morning routine expanded
+        setRoutineCollapse("morning", true);
+    } catch (e) {
+        banner.classList.add("hidden");
+        console.error(e);
+    }
+}
+
+async function dismissMorningBrief() {
+    try {
+        await api.post("/review/api/morning-brief/dismiss", {});
+        document.getElementById("morning-brief")?.classList.add("hidden");
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+function updateShutdownButton(brief) {
+    const btn = document.getElementById("btn-start-shutdown");
+    const badge = document.getElementById("day-complete-badge");
+    if (!btn) return;
+    const data = brief || window._morningBrief || {};
+    const eveningFrom = parseHHMM(data.evening_from || appSettings.evening_from || "18:00");
+    const now = new Date();
+    const mins = now.getHours() * 60 + now.getMinutes();
+    const afterEvening = mins >= eveningFrom;
+
+    if (data.is_complete) {
+        btn.classList.add("hidden");
+        badge?.classList.remove("hidden");
+        return;
+    }
+    badge?.classList.add("hidden");
+    btn.classList.toggle("hidden", !afterEvening);
 }
 
 function setRoutineCollapse(routine, open) {

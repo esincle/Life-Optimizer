@@ -85,6 +85,8 @@ class DailyLog(db.Model):
     is_complete      = db.Column(db.Boolean, nullable=False, default=False)
     completed_at     = db.Column(db.DateTime, nullable=True)
     available_hours  = db.Column(db.Float, nullable=True)  # overrides Design default for that day
+    shutdown_step    = db.Column(db.Integer, nullable=True)  # 0–4 progress through evening flow
+    morning_seen     = db.Column(db.Boolean, nullable=False, default=False)
     created_at       = db.Column(db.DateTime, default=datetime.utcnow)
 
     completions     = db.relationship("RoutineCompletion", back_populates="daily_log",

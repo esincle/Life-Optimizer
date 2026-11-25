@@ -105,7 +105,27 @@ def migrate_schema():
                 conn.execute(text(
                     "ALTER TABLE daily_logs ADD COLUMN available_hours FLOAT"
                 ))
+            if "shutdown_step" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE daily_logs ADD COLUMN shutdown_step INTEGER"
+                ))
+            if "morning_seen" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE daily_logs "
+                    "ADD COLUMN morning_seen BOOLEAN NOT NULL DEFAULT 0"
+                ))
 
+    # Phase 3: evening shutdown replaces "Next Day To-Dos" routine step
+    if "routine_steps" in tables:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                UPDATE routine_steps
+                SET is_active = 0
+                WHERE routine = 'evening'
+                  AND is_active = 1
+                  AND lower(title) LIKE '%next day%to-do%'
+            """))
+             
     if "app_settings" in tables:
         cols = {c["name"] for c in inspect(engine).get_columns("app_settings")}
         with engine.begin() as conn:

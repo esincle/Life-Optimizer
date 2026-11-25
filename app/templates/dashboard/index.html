@@ -10,10 +10,20 @@
             <p class="page-subtitle" id="today-date">Loading…</p>
         </div>
         <div class="today-header-actions">
+            <a class="btn btn-primary btn-sm hidden" id="btn-start-shutdown" href="/review/evening">Start shutdown</a>
+            <span class="badge hidden" id="day-complete-badge">Day complete</span>
             <button class="btn btn-secondary btn-sm" id="btn-enable-push" type="button">Enable computer reminders</button>
             <span class="push-status text-muted" id="push-status"></span>
         </div>
     </header>
+
+    <div class="morning-brief hidden" id="morning-brief" role="status">
+        <div class="morning-brief-body">
+            <p class="morning-brief-title">Morning brief</p>
+            <p class="morning-brief-text" id="morning-brief-text"></p>
+        </div>
+        <button class="btn btn-ghost btn-sm" type="button" id="morning-brief-dismiss" onclick="dismissMorningBrief()">Dismiss</button>
+    </div>
 
     <div class="today-stack">
         <!-- 1. Top priorities -->
