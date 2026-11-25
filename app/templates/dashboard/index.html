@@ -2,10 +2,10 @@
 {% block title %}Today — Life Optimizer{% endblock %}
 
 {% block content %}
-<div class="page">
-    <div class="page-header today-header">
-        <div>
-            <p class="brand-mark">Life Optimizer</p>
+<div class="page page-today">
+    <header class="today-hero">
+        <div class="today-hero-copy">
+            <p class="brand-mark">Life <span>Optimizer</span></p>
             <h1 class="page-title">Today</h1>
             <p class="page-subtitle" id="today-date">Loading…</p>
         </div>
@@ -13,11 +13,12 @@
             <button class="btn btn-secondary btn-sm" id="btn-enable-push" type="button">Enable computer reminders</button>
             <span class="push-status text-muted" id="push-status"></span>
         </div>
-    </div>
+    </header>
 
     <div class="today-grid">
         <!-- Planning: To-do / Goals -->
-        <section class="card today-section full-span" id="section-planning">
+        <section class="card today-section" id="section-planning">
+            <p class="section-kicker">Plan</p>
             <div class="tabs planning-tabs" id="main-planning-tabs">
                 <button class="tab-btn active" type="button" data-main-tab="todo" onclick="switchMainTab('todo', this)">To-do</button>
                 <button class="tab-btn" type="button" data-main-tab="goals" onclick="switchMainTab('goals', this)">Goals</button>
@@ -169,8 +170,10 @@
             </div>
         </section>
 
+        <div class="today-side">
         <!-- Nutrition -->
         <section class="card today-section" id="section-nutrition">
+            <p class="section-kicker">Fuel</p>
             <div class="card-header">
                 <h3 class="card-title">Calories &amp; protein</h3>
                 <a class="btn btn-ghost btn-sm" href="/design/#panel-nutrition">Settings</a>
@@ -219,6 +222,7 @@
 
         <!-- Steps -->
         <section class="card today-section" id="section-steps">
+            <p class="section-kicker">Move</p>
             <div class="card-header">
                 <h3 class="card-title">Steps</h3>
                 <a class="btn btn-ghost btn-sm" href="/design/#panel-nutrition">Goal</a>
@@ -254,6 +258,7 @@
 
         <!-- Workouts: week overview -->
         <section class="card today-section" id="section-workouts-week">
+            <p class="section-kicker">Train</p>
             <div class="card-header">
                 <h3 class="card-title">Workouts this week</h3>
             </div>
@@ -298,6 +303,7 @@
             </div>
             <ul class="entry-list compact" id="workout-today-list"></ul>
         </section>
+        </div>
     </div>
 
     <p class="today-footer text-muted">
