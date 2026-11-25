@@ -268,7 +268,7 @@ class NutritionTarget(db.Model):
     # NULL = not set in Design (do not invent a default on Today)
     protein_goal         = db.Column(db.Integer, nullable=True)
     steps_goal           = db.Column(db.Integer, nullable=True)
-    # Phase 5: when True and ≥14 paired weight+food days, use estimated baseline
+    # When True and BMR inputs ready, use Mifflin–St Jeor BMR as TDEE baseline
     use_adaptive_tdee    = db.Column(db.Boolean, nullable=False, default=False)
     updated_at           = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -280,6 +280,7 @@ class NutritionTarget(db.Model):
             "protein_goal": self.protein_goal,
             "steps_goal": self.steps_goal,
             "use_adaptive_tdee": bool(self.use_adaptive_tdee),
+            "use_bmr_baseline": bool(self.use_adaptive_tdee),  # alias for UI
         }
 
 
@@ -461,6 +462,10 @@ class AppSettings(db.Model):
     todo_cap                = db.Column(db.Integer, nullable=False, default=3)
     default_available_hours = db.Column(db.Float, nullable=False, default=4.0)
     weight_unit             = db.Column(db.String(5), nullable=False, default="kg")  # kg | lb
+    # Mifflin–St Jeor BMR inputs (Phase 5)
+    height_cm               = db.Column(db.Float, nullable=True)
+    age_years               = db.Column(db.Integer, nullable=True)
+    sex                     = db.Column(db.String(10), nullable=False, default="male")  # male | female
     updated_at              = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self):
@@ -474,6 +479,9 @@ class AppSettings(db.Model):
                 if self.default_available_hours is not None else 4.0
             ),
             "weight_unit": self.weight_unit or "kg",
+            "height_cm": self.height_cm,
+            "age_years": self.age_years,
+            "sex": self.sex or "male",
         }
 
 

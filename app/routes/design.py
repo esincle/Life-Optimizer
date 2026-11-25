@@ -61,6 +61,35 @@ def update_settings():
         if unit not in ("kg", "lb"):
             return jsonify({"error": "weight_unit must be kg or lb"}), 400
         row.weight_unit = unit
+    if "height_cm" in data:
+        raw = data.get("height_cm")
+        if raw in ("", None):
+            row.height_cm = None
+        else:
+            try:
+                h = float(raw)
+            except (TypeError, ValueError):
+                return jsonify({"error": "height_cm must be a number"}), 400
+            if h < 50 or h > 300:
+                return jsonify({"error": "height_cm out of range"}), 400
+            row.height_cm = h
+    if "age_years" in data:
+        raw = data.get("age_years")
+        if raw in ("", None):
+            row.age_years = None
+        else:
+            try:
+                age = int(raw)
+            except (TypeError, ValueError):
+                return jsonify({"error": "age_years must be an integer"}), 400
+            if age < 10 or age > 120:
+                return jsonify({"error": "age_years out of range"}), 400
+            row.age_years = age
+    if "sex" in data:
+        sex = (data.get("sex") or "").strip().lower()
+        if sex not in ("male", "female"):
+            return jsonify({"error": "sex must be male or female"}), 400
+        row.sex = sex
     db.session.commit()
     return jsonify(row.to_dict())
 

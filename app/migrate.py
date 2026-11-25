@@ -255,7 +255,7 @@ def migrate_schema():
                   AND description != ''
             """))
 
-    # Phase 5: weight unit + adaptive TDEE flag
+    # Phase 5: weight unit + BMR body stats + formula toggle
     if "app_settings" in tables:
         cols = {c["name"] for c in inspect(engine).get_columns("app_settings")}
         with engine.begin() as conn:
@@ -263,6 +263,19 @@ def migrate_schema():
                 conn.execute(text(
                     "ALTER TABLE app_settings "
                     "ADD COLUMN weight_unit VARCHAR(5) NOT NULL DEFAULT 'kg'"
+                ))
+            if "height_cm" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE app_settings ADD COLUMN height_cm FLOAT"
+                ))
+            if "age_years" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE app_settings ADD COLUMN age_years INTEGER"
+                ))
+            if "sex" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE app_settings "
+                    "ADD COLUMN sex VARCHAR(10) NOT NULL DEFAULT 'male'"
                 ))
 
     if "nutrition_targets" in tables:

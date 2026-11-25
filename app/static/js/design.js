@@ -67,19 +67,24 @@ async function loadNutritionGoals() {
         stepsGoal.value = t.steps_goal != null ? t.steps_goal : "";
         const unitEl = document.getElementById("design-weight-unit");
         if (unitEl) unitEl.value = settings.weight_unit || "kg";
+        const heightEl = document.getElementById("design-height-cm");
+        if (heightEl) heightEl.value = settings.height_cm != null ? settings.height_cm : "";
+        const ageEl = document.getElementById("design-age-years");
+        if (ageEl) ageEl.value = settings.age_years != null ? settings.age_years : "";
+        const sexEl = document.getElementById("design-sex");
+        if (sexEl) sexEl.value = settings.sex || "male";
         const adaptEl = document.getElementById("design-adaptive-tdee");
-        if (adaptEl) adaptEl.checked = !!t.use_adaptive_tdee;
+        if (adaptEl) adaptEl.checked = !!(t.use_bmr_baseline ?? t.use_adaptive_tdee);
         const adaptHint = document.getElementById("design-adaptive-hint");
         if (adaptHint) {
-            const a = t.adaptive || {};
+            const a = t.adaptive || t.bmr || {};
             if (a.ready) {
                 adaptHint.textContent =
-                    `Adaptive ready: ~${a.adaptive_baseline} kcal ` +
-                    `(${a.paired_days} paired days · Δ${a.delta_kg} kg over ${a.span_days}d · avg intake ${a.avg_intake})`;
+                    `BMR ready: ${a.bmr ?? a.adaptive_baseline} kcal ` +
+                    `(${a.weight_kg} kg on ${a.weight_date} · ${a.height_cm} cm · age ${a.age_years} · ${a.sex})`;
             } else {
-                adaptHint.textContent =
-                    `Adaptive needs ${a.required_days || 14} days with both weight + food logged ` +
-                    `(have ${a.paired_days || 0}).`;
+                const miss = (a.missing || []).join(", ") || "weight, height, age";
+                adaptHint.textContent = `BMR needs: ${miss}.`;
             }
         }
         const hint = document.getElementById("design-goals-hint");
@@ -88,6 +93,7 @@ async function loadNutritionGoals() {
             bits.push(t.protein_goal != null ? `Protein ${t.protein_goal} g` : "Protein unset");
             bits.push(t.steps_goal != null ? `Steps ${t.steps_goal.toLocaleString()}` : "Steps unset");
             bits.push(`Weight ${(settings.weight_unit || "kg")}`);
+            if (settings.height_cm) bits.push(`${settings.height_cm} cm`);
             hint.textContent = `Saved: ${bits.join(" · ")}`;
         }
     } catch (e) {
@@ -104,6 +110,9 @@ async function saveNutritionGoals() {
     const steps_goal = stepsRaw === "" ? null : Number(stepsRaw);
     const use_adaptive_tdee = !!document.getElementById("design-adaptive-tdee")?.checked;
     const weight_unit = document.getElementById("design-weight-unit")?.value || "kg";
+    const heightRaw = document.getElementById("design-height-cm")?.value.trim() ?? "";
+    const ageRaw = document.getElementById("design-age-years")?.value.trim() ?? "";
+    const sex = document.getElementById("design-sex")?.value || "male";
     try {
         await Promise.all([
             api.put("/today/api/nutrition/targets", {
@@ -113,7 +122,12 @@ async function saveNutritionGoals() {
                 steps_goal,
                 use_adaptive_tdee,
             }),
-            api.put("/design/api/settings", { weight_unit }),
+            api.put("/design/api/settings", {
+                weight_unit,
+                height_cm: heightRaw === "" ? null : Number(heightRaw),
+                age_years: ageRaw === "" ? null : Number(ageRaw),
+                sex,
+            }),
         ]);
         showToast("Nutrition settings saved", "success");
         await loadNutritionGoals();

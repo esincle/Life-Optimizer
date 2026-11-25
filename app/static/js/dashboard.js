@@ -1205,9 +1205,9 @@ async function loadNutrition() {
             food_logged ? `TDEE ${tdee.tdee}` : "Log food to track remaining";
         document.getElementById("deficit-line").className = "deficit-line";
     }
-    const adaptNote = tdee.using_adaptive ? "adaptive" : "manual";
+    const baseNote = tdee.using_bmr || tdee.using_adaptive ? "BMR" : "manual";
     document.getElementById("tdee-breakdown").textContent =
-        `TDEE ${tdee.tdee} = ${tdee.baseline} (${adaptNote}) + ${tdee.from_steps} steps + ${tdee.from_workouts} workouts`;
+        `TDEE ${tdee.tdee} = ${tdee.baseline} (${baseNote}) + ${tdee.from_steps} steps + ${tdee.from_workouts} workouts`;
     renderWeight(today.weight);
 
     const proLabel = document.getElementById("pro-label");

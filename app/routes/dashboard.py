@@ -8,8 +8,6 @@ from app.models import (
 )
 
 KG_PER_LB = 0.45359237
-KCAL_PER_KG = 7700  # energy density used for adaptive TDEE estimate
-ADAPTIVE_MIN_DAYS = 14
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/today")
 
@@ -87,79 +85,80 @@ def get_display_weight_unit():
     return (settings.weight_unit or "kg").lower()
 
 
-def compute_adaptive_tdee(target=None):
-    """Estimate maintenance from ≥14 days with both weight + food logged.
+def latest_weight_kg(as_of=None):
+    """Most recent weight on or before as_of, in kg."""
+    as_of = as_of or date.today()
+    row = (WeightLog.query
+           .filter(WeightLog.log_date <= as_of)
+           .order_by(WeightLog.log_date.desc())
+           .first())
+    if not row:
+        return None, None
+    return weight_to_kg(row.weight, row.unit), row
 
-    adaptive ≈ avg_intake − (Δweight_kg × 7700 / days)
-    (assumed completion of truncated Phase 5 spec).
+
+def mifflin_st_jeor_bmr(weight_kg, height_cm, age_years, sex="male"):
+    """Mifflin–St Jeor BMR.
+
+    Male (user formula): 10×kg + 6.25×cm − 5×age + 5
+    Female: same with −161 instead of +5
     """
+    sex = (sex or "male").lower()
+    constant = 5 if sex != "female" else -161
+    return 10.0 * weight_kg + 6.25 * height_cm - 5.0 * age_years + constant
+
+
+def compute_bmr_baseline(target=None, as_of=None):
+    """BMR from latest weight + Design height/age/sex when all inputs exist."""
     target = target or get_or_create_nutrition_target()
-    weights = WeightLog.query.order_by(WeightLog.log_date.asc()).all()
-    if not weights:
-        return {
-            "ready": False,
-            "paired_days": 0,
-            "required_days": ADAPTIVE_MIN_DAYS,
-            "adaptive_baseline": None,
-            "manual_baseline": target.tdee_baseline or 0,
-            "avg_intake": None,
-            "delta_kg": None,
-            "span_days": None,
-        }
+    settings = get_or_create_app_settings()
+    as_of = as_of or date.today()
+    weight_kg, weight_row = latest_weight_kg(as_of)
+    height = settings.height_cm
+    age = settings.age_years
+    sex = settings.sex or "male"
 
-    # Days that have food logged
-    food_dates = {
-        row[0]
-        for row in db.session.query(NutritionEntry.log_date).distinct().all()
-    }
-    paired = [w for w in weights if w.log_date in food_dates]
-    paired_count = len(paired)
-    if paired_count < ADAPTIVE_MIN_DAYS:
-        return {
-            "ready": False,
-            "paired_days": paired_count,
-            "required_days": ADAPTIVE_MIN_DAYS,
-            "adaptive_baseline": None,
-            "manual_baseline": target.tdee_baseline or 0,
-            "avg_intake": None,
-            "delta_kg": None,
-            "span_days": None,
-        }
+    missing = []
+    if weight_kg is None:
+        missing.append("weight")
+    if height is None or height <= 0:
+        missing.append("height")
+    if age is None or age <= 0:
+        missing.append("age")
 
-    first, last = paired[0], paired[-1]
-    span_days = max(1, (last.log_date - first.log_date).days)
-    first_kg = weight_to_kg(first.weight, first.unit)
-    last_kg = weight_to_kg(last.weight, last.unit)
-    delta_kg = last_kg - first_kg
-
-    intakes = []
-    for w in paired:
-        day_cals = (
-            db.session.query(db.func.coalesce(db.func.sum(NutritionEntry.calories), 0))
-            .filter(NutritionEntry.log_date == w.log_date)
-            .scalar()
-        )
-        intakes.append(float(day_cals or 0))
-    avg_intake = sum(intakes) / len(intakes)
-    adaptive = round(avg_intake - (delta_kg * KCAL_PER_KG / span_days))
-    adaptive = max(1000, min(6000, adaptive))
-
-    return {
-        "ready": True,
-        "paired_days": paired_count,
-        "required_days": ADAPTIVE_MIN_DAYS,
-        "adaptive_baseline": adaptive,
+    payload = {
+        "ready": False,
+        "bmr": None,
+        "adaptive_baseline": None,  # alias kept for older UI keys
         "manual_baseline": target.tdee_baseline or 0,
-        "avg_intake": round(avg_intake),
-        "delta_kg": round(delta_kg, 2),
-        "span_days": span_days,
+        "formula": "10×weight_kg + 6.25×height_cm − 5×age + (5 male / −161 female)",
+        "weight_kg": round(weight_kg, 2) if weight_kg is not None else None,
+        "weight_date": weight_row.log_date.isoformat() if weight_row else None,
+        "height_cm": height,
+        "age_years": age,
+        "sex": sex,
+        "missing": missing,
     }
+    if missing:
+        return payload
+
+    bmr = round(mifflin_st_jeor_bmr(weight_kg, float(height), int(age), sex))
+    bmr = max(800, min(5000, bmr))
+    payload["ready"] = True
+    payload["bmr"] = bmr
+    payload["adaptive_baseline"] = bmr
+    return payload
+
+
+def compute_adaptive_tdee(target=None):
+    """Back-compat name → Mifflin–St Jeor BMR baseline."""
+    return compute_bmr_baseline(target)
 
 
 def compute_tdee_for_day(day, target=None):
     """TDEE = baseline + kcal/1k steps + workout calories burned.
 
-    Baseline is adaptive when enabled and ready; otherwise manual Design value.
+    Baseline is Mifflin–St Jeor BMR when enabled and ready; else manual Design value.
     """
     target = target or get_or_create_nutrition_target()
     steps_row = DailySteps.query.filter_by(log_date=day).first()
@@ -169,13 +168,9 @@ def compute_tdee_for_day(day, target=None):
     workouts = Workout.query.filter_by(log_date=day).all()
     from_workouts = sum(w.calories_burned or 0 for w in workouts)
 
-    adaptive = compute_adaptive_tdee(target)
-    using_adaptive = bool(target.use_adaptive_tdee) and adaptive["ready"]
-    baseline = (
-        adaptive["adaptive_baseline"]
-        if using_adaptive
-        else (target.tdee_baseline or 0)
-    )
+    bmr_info = compute_bmr_baseline(target, as_of=day)
+    using_bmr = bool(target.use_adaptive_tdee) and bmr_info["ready"]
+    baseline = bmr_info["bmr"] if using_bmr else (target.tdee_baseline or 0)
     tdee = baseline + from_steps + from_workouts
     return {
         "tdee": tdee,
@@ -185,8 +180,10 @@ def compute_tdee_for_day(day, target=None):
         "from_workouts": from_workouts,
         "steps": step_count,
         "steps_kcal_per_1k": rate,
-        "adaptive": adaptive,
-        "using_adaptive": using_adaptive,
+        "bmr": bmr_info,
+        "adaptive": bmr_info,  # back-compat
+        "using_bmr": using_bmr,
+        "using_adaptive": using_bmr,
     }
 
 
@@ -750,7 +747,9 @@ def delete_todo_step(step_id):
 def get_nutrition_targets():
     target = get_or_create_nutrition_target()
     payload = target.to_dict()
-    payload["adaptive"] = compute_adaptive_tdee(target)
+    bmr = compute_bmr_baseline(target)
+    payload["bmr"] = bmr
+    payload["adaptive"] = bmr  # back-compat
     return jsonify(payload)
 
 
@@ -771,11 +770,14 @@ def update_nutrition_targets():
         target.protein_goal = _parse_optional_goal(data.get("protein_goal"))
     if "steps_goal" in data:
         target.steps_goal = _parse_optional_goal(data.get("steps_goal"))
-    if "use_adaptive_tdee" in data:
-        target.use_adaptive_tdee = bool(data.get("use_adaptive_tdee"))
+    if "use_adaptive_tdee" in data or "use_bmr_baseline" in data:
+        flag = data.get("use_bmr_baseline", data.get("use_adaptive_tdee"))
+        target.use_adaptive_tdee = bool(flag)
     db.session.commit()
     payload = target.to_dict()
-    payload["adaptive"] = compute_adaptive_tdee(target)
+    bmr = compute_bmr_baseline(target)
+    payload["bmr"] = bmr
+    payload["adaptive"] = bmr
     return jsonify(payload)
 
 
