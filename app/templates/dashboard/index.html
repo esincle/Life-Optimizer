@@ -201,14 +201,15 @@
                 <div class="week-stat">
                     <div class="week-stat-label">Week deficit</div>
                     <div class="week-stat-value" id="week-deficit">—</div>
-                    <div class="week-stat-meta" id="week-deficit-meta">vs dynamic TDEE</div>
+                    <div class="week-stat-meta" id="week-deficit-meta">complete days only</div>
                 </div>
                 <div class="week-stat">
                     <div class="week-stat-label">Protein ±15%</div>
                     <div class="week-stat-value" id="week-protein-hits">0</div>
-                    <div class="week-stat-meta">days on target</div>
+                    <div class="week-stat-meta">complete days on target</div>
                 </div>
             </div>
+            <p class="text-muted week-today-line" id="week-today-nutrition">Today (in progress): …</p>
             <div class="add-form nutrition-quick" id="nutrition-form">
                 <div class="add-form-row">
                     <input type="text" id="food-label" placeholder="Meal or snack">
@@ -244,10 +245,11 @@
                 </div>
                 <div class="week-stat">
                     <div class="week-stat-label">Goal days</div>
-                    <div class="week-stat-value" id="week-steps-hits">0</div>
-                    <div class="week-stat-meta">hit daily goal</div>
+                    <div class="week-stat-value" id="week-steps-hits">—</div>
+                    <div class="week-stat-meta">of logged complete days</div>
                 </div>
             </div>
+            <p class="text-muted week-today-line" id="week-today-steps">Today (in progress): …</p>
             <div class="add-form nutrition-quick">
                 <div class="add-form-row">
                     <input type="number" id="steps-count" placeholder="Steps today" min="0" step="100">

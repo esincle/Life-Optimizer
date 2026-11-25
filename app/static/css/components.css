@@ -959,6 +959,18 @@
 .deficit-line.is-deficit { color: var(--color-accent-dark); font-weight: 700; }
 .deficit-line.is-surplus { color: var(--color-morning); font-weight: 700; }
 
+.goal-unset-link {
+    font-weight: 600;
+    color: var(--color-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.week-today-line {
+    margin: 0 0 var(--space-md);
+    font-size: var(--font-size-sm);
+}
+
 .tdee-breakdown {
     font-size: var(--font-size-xs);
     margin-top: 4px;

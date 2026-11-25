@@ -78,10 +78,13 @@ class JournalPrompt(db.Model):
 class DailyLog(db.Model):
     __tablename__ = "daily_logs"
 
-    id         = db.Column(db.Integer, primary_key=True)
-    log_date   = db.Column(db.Date, nullable=False, unique=True, index=True)
-    notes      = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    id           = db.Column(db.Integer, primary_key=True)
+    log_date     = db.Column(db.Date, nullable=False, unique=True, index=True)
+    notes        = db.Column(db.Text, nullable=True)
+    # Set by evening shutdown (Phase 3); week stats only count complete days
+    is_complete  = db.Column(db.Boolean, nullable=False, default=False)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
 
     completions     = db.relationship("RoutineCompletion", back_populates="daily_log",
                                       cascade="all, delete-orphan")
@@ -231,8 +234,9 @@ class NutritionTarget(db.Model):
     # Dynamic TDEE = baseline + (steps/1000)*steps_kcal_per_1k + workout burn
     tdee_baseline        = db.Column(db.Integer, nullable=False, default=2050)
     steps_kcal_per_1k    = db.Column(db.Integer, nullable=False, default=45)
-    protein_goal         = db.Column(db.Integer, nullable=False, default=150)
-    steps_goal           = db.Column(db.Integer, nullable=False, default=8000)
+    # NULL = not set in Design (do not invent a default on Today)
+    protein_goal         = db.Column(db.Integer, nullable=True)
+    steps_goal           = db.Column(db.Integer, nullable=True)
     updated_at           = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self):

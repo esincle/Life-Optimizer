@@ -636,14 +636,20 @@ function formatDeficit(n) {
     return "At maintenance";
 }
 
+function setGoalLink(el, text) {
+    el.innerHTML = `<a class="goal-unset-link" href="/design/#panel-nutrition">${escHtml(text)}</a>`;
+}
+
 async function loadNutrition() {
     const [today, week] = await Promise.all([
         api.get("/today/api/nutrition/today"),
         api.get("/today/api/nutrition/week"),
     ]);
     const { targets, totals, deficit, entries, tdee, food_logged } = today;
-    const proPct = targets.protein_goal
-        ? Math.min(100, Math.round(totals.protein / targets.protein_goal * 100))
+    const proteinGoal = targets.protein_goal;
+    const proteinSet = proteinGoal != null && proteinGoal > 0;
+    const proPct = proteinSet
+        ? Math.min(100, Math.round(totals.protein / proteinGoal * 100))
         : 0;
 
     document.getElementById("cal-label").textContent = food_logged
@@ -662,23 +668,42 @@ async function loadNutrition() {
     document.getElementById("tdee-breakdown").textContent =
         `TDEE ${tdee.tdee} = ${tdee.baseline} baseline + ${tdee.from_steps} from steps (${tdee.steps.toLocaleString()}) + ${tdee.from_workouts} from workouts`;
 
-    document.getElementById("pro-label").textContent = food_logged
-        ? `${totals.protein} / ${targets.protein_goal} g`
-        : `— / ${targets.protein_goal} g`;
-    document.getElementById("pro-bar").style.width = food_logged ? `${proPct}%` : "0%";
+    const proLabel = document.getElementById("pro-label");
+    if (!proteinSet) {
+        setGoalLink(proLabel, "Set goal →");
+        document.getElementById("pro-bar").style.width = "0%";
+    } else {
+        proLabel.textContent = food_logged
+            ? `${totals.protein} / ${proteinGoal} g`
+            : `— / ${proteinGoal} g`;
+        document.getElementById("pro-bar").style.width = food_logged ? `${proPct}%` : "0%";
+    }
 
-    if (week.days_logged) {
+    const completeDays = week.days_complete ?? week.days_logged ?? 0;
+    if (completeDays) {
         document.getElementById("week-deficit").textContent =
             formatDeficit(week.total_deficit).replace(" kcal", "");
         document.getElementById("week-deficit-meta").textContent =
-            `${week.days_logged} food-logged day${week.days_logged === 1 ? "" : "s"} · avg ${formatDeficit(week.avg_deficit)}`;
+            `${completeDays} complete day${completeDays === 1 ? "" : "s"} · avg ${formatDeficit(week.avg_deficit)}`;
     } else {
         document.getElementById("week-deficit").textContent = "—";
         document.getElementById("week-deficit-meta").textContent =
-            "No food-logged days this week";
+            "No complete days yet this week";
     }
     document.getElementById("week-protein-hits").textContent =
-        `${week.protein_hit_days}/${week.days_logged || 0}`;
+        `${week.protein_hit_days}/${completeDays || 0}`;
+
+    const todayLine = document.getElementById("week-today-nutrition");
+    if (todayLine && week.today) {
+        const t = week.today;
+        if (t.logged && t.deficit != null) {
+            todayLine.textContent = `Today (in progress): ${formatDeficit(t.deficit)} · ${t.protein}g protein`;
+        } else if (t.logged) {
+            todayLine.textContent = `Today (in progress): ${t.calories} kcal logged`;
+        } else {
+            todayLine.textContent = "Today (in progress): not logged yet";
+        }
+    }
 
     const list = document.getElementById("food-list");
     list.innerHTML = entries.length
@@ -725,18 +750,35 @@ async function loadSteps() {
         api.get("/today/api/steps/today"),
         api.get("/today/api/steps/week"),
     ]);
-    document.getElementById("steps-label").textContent =
-        `${today.count.toLocaleString()} / ${today.steps_goal.toLocaleString()}`;
-    document.getElementById("steps-bar").style.width = `${today.pct}%`;
+    const stepsLabel = document.getElementById("steps-label");
+    const goalSet = today.goal_set && today.steps_goal != null;
+    if (!goalSet) {
+        setGoalLink(stepsLabel, "Set goal →");
+        document.getElementById("steps-bar").style.width = "0%";
+    } else {
+        stepsLabel.textContent =
+            `${today.count.toLocaleString()} / ${today.steps_goal.toLocaleString()}`;
+        document.getElementById("steps-bar").style.width = `${today.pct}%`;
+    }
     document.getElementById("steps-count").value = today.logged ? today.count : "";
 
     document.getElementById("week-steps-total").textContent = week.total.toLocaleString();
     document.getElementById("week-steps-meta").textContent =
         week.days_logged
-            ? `avg ${week.avg.toLocaleString()} · ${week.days_logged} day${week.days_logged === 1 ? "" : "s"}`
-            : "No days logged";
+            ? `avg ${week.avg.toLocaleString()} · ${week.days_logged} complete logged day${week.days_logged === 1 ? "" : "s"}`
+            : "No complete logged days";
+    // Only logged days in the denominator (never unlogged misses)
     document.getElementById("week-steps-hits").textContent =
-        `${week.goal_hit_days}/${week.days_logged || 0}`;
+        week.days_logged
+            ? `${week.goal_hit_days}/${week.days_logged}`
+            : "—";
+
+    const todayLine = document.getElementById("week-today-steps");
+    if (todayLine && week.today) {
+        todayLine.textContent = week.today.logged
+            ? `Today (in progress): ${week.today.count.toLocaleString()} steps`
+            : "Today (in progress): not logged yet";
+    }
 }
 
 async function saveSteps() {

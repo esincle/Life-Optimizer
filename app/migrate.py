@@ -43,14 +43,63 @@ def migrate_schema():
         cols = {c["name"] for c in inspect(engine).get_columns("nutrition_targets")}
         with engine.begin() as conn:
             if "steps_goal" not in cols:
+                # Nullable: unset until the user saves a goal in Design
                 conn.execute(text(
-                    "ALTER TABLE nutrition_targets "
-                    "ADD COLUMN steps_goal INTEGER NOT NULL DEFAULT 8000"
+                    "ALTER TABLE nutrition_targets ADD COLUMN steps_goal INTEGER"
                 ))
             if "steps_kcal_per_1k" not in cols:
                 conn.execute(text(
                     "ALTER TABLE nutrition_targets "
                     "ADD COLUMN steps_kcal_per_1k INTEGER NOT NULL DEFAULT 45"
+                ))
+
+        # SQLite can't DROP NOT NULL — rebuild so protein_goal / steps_goal are nullable
+        cols_info = inspect(engine).get_columns("nutrition_targets")
+        by_name = {c["name"]: c for c in cols_info}
+        needs_null_goals = False
+        for goal_col in ("protein_goal", "steps_goal"):
+            col = by_name.get(goal_col)
+            if col is not None and col.get("nullable") is False:
+                needs_null_goals = True
+        if needs_null_goals:
+            with engine.begin() as conn:
+                conn.execute(text("""
+                    CREATE TABLE nutrition_targets_new (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        tdee_baseline INTEGER NOT NULL DEFAULT 2050,
+                        steps_kcal_per_1k INTEGER NOT NULL DEFAULT 45,
+                        protein_goal INTEGER,
+                        steps_goal INTEGER,
+                        updated_at DATETIME
+                    )
+                """))
+                conn.execute(text("""
+                    INSERT INTO nutrition_targets_new
+                        (id, tdee_baseline, steps_kcal_per_1k, protein_goal, steps_goal, updated_at)
+                    SELECT id,
+                           COALESCE(tdee_baseline, 2050),
+                           COALESCE(steps_kcal_per_1k, 45),
+                           protein_goal,
+                           steps_goal,
+                           updated_at
+                    FROM nutrition_targets
+                """))
+                conn.execute(text("DROP TABLE nutrition_targets"))
+                conn.execute(text(
+                    "ALTER TABLE nutrition_targets_new RENAME TO nutrition_targets"
+                ))
+
+    if "daily_logs" in tables:
+        cols = {c["name"] for c in inspect(engine).get_columns("daily_logs")}
+        with engine.begin() as conn:
+            if "is_complete" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE daily_logs "
+                    "ADD COLUMN is_complete BOOLEAN NOT NULL DEFAULT 0"
+                ))
+            if "completed_at" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE daily_logs ADD COLUMN completed_at DATETIME"
                 ))
 
     if "workouts" in tables:

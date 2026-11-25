@@ -19,10 +19,25 @@ document.addEventListener("DOMContentLoaded", () => {
 async function loadNutritionGoals() {
     try {
         const t = await api.get("/today/api/nutrition/targets");
-        document.getElementById("design-tdee-baseline").value = t.tdee_baseline ?? 2050;
-        document.getElementById("design-steps-kcal").value = t.steps_kcal_per_1k ?? 45;
-        document.getElementById("design-pro-goal").value = t.protein_goal;
-        document.getElementById("design-steps-goal").value = t.steps_goal ?? 8000;
+        const baseline = document.getElementById("design-tdee-baseline");
+        const stepsKcal = document.getElementById("design-steps-kcal");
+        const proGoal = document.getElementById("design-pro-goal");
+        const stepsGoal = document.getElementById("design-steps-goal");
+        if (!baseline || !proGoal || !stepsGoal) {
+            throw new Error("Nutrition settings fields missing on page");
+        }
+        baseline.value = t.tdee_baseline ?? 2050;
+        stepsKcal.value = t.steps_kcal_per_1k ?? 45;
+        // Show saved goals; leave blank when unset (null)
+        proGoal.value = t.protein_goal != null ? t.protein_goal : "";
+        stepsGoal.value = t.steps_goal != null ? t.steps_goal : "";
+        const hint = document.getElementById("design-goals-hint");
+        if (hint) {
+            const bits = [];
+            bits.push(t.protein_goal != null ? `Protein ${t.protein_goal} g` : "Protein unset");
+            bits.push(t.steps_goal != null ? `Steps ${t.steps_goal.toLocaleString()}` : "Steps unset");
+            hint.textContent = `Saved: ${bits.join(" · ")}`;
+        }
     } catch (e) {
         showToast(e.message, "error");
     }
@@ -31,8 +46,10 @@ async function loadNutritionGoals() {
 async function saveNutritionGoals() {
     const tdee_baseline = Number(document.getElementById("design-tdee-baseline").value);
     const steps_kcal_per_1k = Number(document.getElementById("design-steps-kcal").value);
-    const protein_goal = Number(document.getElementById("design-pro-goal").value);
-    const steps_goal = Number(document.getElementById("design-steps-goal").value);
+    const proRaw = document.getElementById("design-pro-goal").value.trim();
+    const stepsRaw = document.getElementById("design-steps-goal").value.trim();
+    const protein_goal = proRaw === "" ? null : Number(proRaw);
+    const steps_goal = stepsRaw === "" ? null : Number(stepsRaw);
     try {
         await api.put("/today/api/nutrition/targets", {
             tdee_baseline,
@@ -41,6 +58,7 @@ async function saveNutritionGoals() {
             steps_goal,
         });
         showToast("Nutrition settings saved", "success");
+        await loadNutritionGoals();
     } catch (e) {
         showToast(e.message, "error");
     }

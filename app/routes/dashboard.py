@@ -3,7 +3,7 @@ from flask import Blueprint, render_template, request, jsonify
 from app.extensions import db
 from app.models import (
     Todo, TodoStep, NutritionTarget, NutritionEntry, DailySteps,
-    Workout, Goal, Reminder,
+    Workout, Goal, Reminder, DailyLog,
 )
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/today")
@@ -28,15 +28,34 @@ def _clamp(n, lo, hi):
 def get_or_create_nutrition_target():
     target = NutritionTarget.query.first()
     if not target:
+        # Protein/steps goals stay unset until saved in Design
         target = NutritionTarget(
             tdee_baseline=2050,
             steps_kcal_per_1k=45,
-            protein_goal=150,
-            steps_goal=8000,
+            protein_goal=None,
+            steps_goal=None,
         )
         db.session.add(target)
         db.session.commit()
     return target
+
+
+def _parse_optional_goal(value):
+    """Empty / null → None (unset). Otherwise non-negative int."""
+    if value is None or value == "":
+        return None
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return None
+    if n <= 0:
+        return None
+    return n
+
+
+def _day_is_complete(day):
+    log = DailyLog.query.filter_by(log_date=day).first()
+    return bool(log and log.is_complete)
 
 
 def parse_date(value, fallback=None):
@@ -362,9 +381,9 @@ def update_nutrition_targets():
     if "steps_kcal_per_1k" in data:
         target.steps_kcal_per_1k = max(0, int(data["steps_kcal_per_1k"]))
     if "protein_goal" in data:
-        target.protein_goal = max(0, int(data["protein_goal"]))
+        target.protein_goal = _parse_optional_goal(data.get("protein_goal"))
     if "steps_goal" in data:
-        target.steps_goal = max(0, int(data["steps_goal"]))
+        target.steps_goal = _parse_optional_goal(data.get("steps_goal"))
     db.session.commit()
     return jsonify(target.to_dict())
 
@@ -394,9 +413,33 @@ def nutrition_today():
     })
 
 
+def _nutrition_day_payload(d, totals, target, tdee_info, *, is_complete, is_today):
+    food_logged = totals is not None
+    protein_goal = target.protein_goal
+    deficit = None
+    within = False
+    if food_logged:
+        deficit = tdee_info["tdee"] - totals["calories"]
+        if protein_goal:
+            lo = protein_goal * (1 - PROTEIN_TOLERANCE)
+            hi = protein_goal * (1 + PROTEIN_TOLERANCE)
+            within = lo <= totals["protein"] <= hi
+    return {
+        "date": d.isoformat(),
+        "calories": totals["calories"] if food_logged else 0,
+        "protein": totals["protein"] if food_logged else 0,
+        "tdee": tdee_info,
+        "deficit": deficit,
+        "protein_within_15": within,
+        "logged": food_logged,
+        "is_complete": is_complete,
+        "is_today": is_today,
+    }
+
+
 @dashboard_bp.route("/api/nutrition/week", methods=["GET"])
 def nutrition_week():
-    """Weekly calorie deficit/surplus vs dynamic TDEE + protein ±15% days."""
+    """Week deficit/protein on complete days only; today returned separately."""
     today = date.today()
     week_start = today - timedelta(days=today.weekday())
     week_end = week_start + timedelta(days=6)
@@ -412,10 +455,20 @@ def nutrition_week():
         bucket["calories"] += e.calories
         bucket["protein"] += e.protein
 
+    complete_dates = {
+        row.log_date
+        for row in DailyLog.query.filter(
+            DailyLog.log_date >= week_start,
+            DailyLog.log_date <= week_end,
+            DailyLog.is_complete.is_(True),
+        ).all()
+    }
+
     days = []
     protein_hit_days = 0
-    days_with_food = 0
+    days_complete = 0
     total_deficit = 0
+    today_payload = None
 
     for i in range(7):
         d = week_start + timedelta(days=i)
@@ -423,47 +476,37 @@ def nutrition_week():
             break
         totals = by_day.get(d)
         tdee_info = compute_tdee_for_day(d, target)
-        if not totals:
-            days.append({
-                "date": d.isoformat(),
-                "calories": 0,
-                "protein": 0,
-                "tdee": tdee_info,
-                "deficit": None,
-                "protein_within_15": False,
-                "logged": False,
-            })
+        is_today = d == today
+        is_complete = d in complete_dates
+        payload = _nutrition_day_payload(
+            d, totals, target, tdee_info,
+            is_complete=is_complete, is_today=is_today,
+        )
+        days.append(payload)
+        if is_today:
+            today_payload = payload
             continue
-        days_with_food += 1
-        deficit = tdee_info["tdee"] - totals["calories"]
-        total_deficit += deficit
-        within = False
-        if target.protein_goal > 0:
-            lo = target.protein_goal * (1 - PROTEIN_TOLERANCE)
-            hi = target.protein_goal * (1 + PROTEIN_TOLERANCE)
-            within = lo <= totals["protein"] <= hi
-            if within:
-                protein_hit_days += 1
-        days.append({
-            "date": d.isoformat(),
-            "calories": totals["calories"],
-            "protein": totals["protein"],
-            "tdee": tdee_info,
-            "deficit": deficit,
-            "protein_within_15": within,
-            "logged": True,
-        })
+        # Week rollups: complete days only (never the in-progress today)
+        if not is_complete or not payload["logged"]:
+            continue
+        days_complete += 1
+        if payload["deficit"] is not None:
+            total_deficit += payload["deficit"]
+        if payload["protein_within_15"]:
+            protein_hit_days += 1
 
     return jsonify({
         "week_start": week_start.isoformat(),
         "week_end": week_end.isoformat(),
         "targets": target.to_dict(),
-        "total_deficit": total_deficit,  # sum of (dynamic TDEE − intake) on logged days
-        "avg_deficit": round(total_deficit / days_with_food) if days_with_food else 0,
-        "days_logged": days_with_food,
+        "total_deficit": total_deficit,
+        "avg_deficit": round(total_deficit / days_complete) if days_complete else 0,
+        "days_logged": days_complete,
+        "days_complete": days_complete,
         "protein_hit_days": protein_hit_days,
         "protein_tolerance_pct": int(PROTEIN_TOLERANCE * 100),
         "days": days,
+        "today": today_payload,
     })
 
 
@@ -663,13 +706,14 @@ def get_steps_today():
     target = get_or_create_nutrition_target()
     row = DailySteps.query.filter_by(log_date=today).first()
     count = row.count if row else 0
-    goal = target.steps_goal or 0
+    goal = target.steps_goal  # None if unset
     return jsonify({
         "date": today.isoformat(),
         "count": count,
         "steps_goal": goal,
         "pct": min(100, round(count / goal * 100)) if goal else 0,
         "logged": row is not None,
+        "goal_set": goal is not None,
     })
 
 
@@ -691,13 +735,14 @@ def put_steps_today():
     db.session.commit()
 
     target = get_or_create_nutrition_target()
-    goal = target.steps_goal or 0
+    goal = target.steps_goal
     return jsonify({
         "date": today.isoformat(),
         "count": row.count,
         "steps_goal": goal,
         "pct": min(100, round(row.count / goal * 100)) if goal else 0,
         "logged": True,
+        "goal_set": goal is not None,
     })
 
 
@@ -711,25 +756,58 @@ def steps_week():
             .filter(DailySteps.log_date >= week_start, DailySteps.log_date <= week_end)
             .all())
     by_date = {r.log_date: r.count for r in rows}
+    complete_dates = {
+        row.log_date
+        for row in DailyLog.query.filter(
+            DailyLog.log_date >= week_start,
+            DailyLog.log_date <= week_end,
+            DailyLog.is_complete.is_(True),
+        ).all()
+    }
 
     days = []
     total = 0
     logged = 0
     hit = 0
-    goal = target.steps_goal or 0
+    goal = target.steps_goal
+    today_payload = None
+
     for i in range(7):
         d = week_start + timedelta(days=i)
         if d > today:
             break
+        is_today = d == today
+        is_complete = d in complete_dates
         if d in by_date:
             count = by_date[d]
-            logged += 1
-            total += count
-            if goal and count >= goal:
-                hit += 1
-            days.append({"date": d.isoformat(), "count": count, "logged": True, "hit_goal": bool(goal and count >= goal)})
+            payload = {
+                "date": d.isoformat(),
+                "count": count,
+                "logged": True,
+                "hit_goal": bool(goal and count >= goal),
+                "is_complete": is_complete,
+                "is_today": is_today,
+            }
         else:
-            days.append({"date": d.isoformat(), "count": 0, "logged": False, "hit_goal": False})
+            payload = {
+                "date": d.isoformat(),
+                "count": 0,
+                "logged": False,
+                "hit_goal": False,
+                "is_complete": is_complete,
+                "is_today": is_today,
+            }
+        days.append(payload)
+        if is_today:
+            today_payload = payload
+            continue
+        # Week goal-days: only complete days that actually have a steps log
+        if not is_complete or not payload["logged"]:
+            continue
+        logged += 1
+        total += payload["count"]
+        if payload["hit_goal"]:
+            hit += 1
 
     return jsonify({
         "week_start": week_start.isoformat(),
@@ -740,6 +818,8 @@ def steps_week():
         "days_logged": logged,
         "goal_hit_days": hit,
         "days": days,
+        "today": today_payload,
+        "goal_set": goal is not None,
     })
 
 

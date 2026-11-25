@@ -21,13 +21,37 @@ function badgeClass(routine) {
 // ── TODAY'S CHECKLISTS ────────────────────────────────────────────────────────
 
 async function loadToday() {
-    const data = await api.post("/tracker/api/today/init", {});
-    renderCompletions(data.completions);
+    try {
+        const data = await api.post("/tracker/api/today/init", {});
+        renderCompletions(data.completions || []);
+    } catch (e) {
+        showToast(e.message || "Couldn’t load today’s routines", "error");
+        for (const routine of ROUTINES) {
+            const list = document.getElementById(`${routine}-checklist`);
+            if (list) {
+                list.innerHTML = `<li class="text-muted">Couldn’t load checklist.</li>`;
+            }
+        }
+    }
 }
 
 function renderCompletions(completions) {
     for (const routine of ROUTINES) {
         const items = completions.filter(c => c.routine === routine);
+        const card = document.getElementById(`${routine}-routine-card`)
+            || (routine === "daily" ? document.getElementById("daily-routine-card") : null);
+        if (routine === "daily") {
+            const dailyCard = document.getElementById("daily-routine-card");
+            if (dailyCard) {
+                if (items.length === 0) {
+                    dailyCard.classList.add("hidden");
+                    continue;
+                }
+                dailyCard.classList.remove("hidden");
+            }
+        } else if (card && items.length === 0) {
+            // Morning/evening stay visible with empty hint
+        }
         renderChecklist(routine, items);
         updateProgress(routine, items);
     }
@@ -35,6 +59,7 @@ function renderCompletions(completions) {
 
 function renderChecklist(routine, completions) {
     const list = document.getElementById(`${routine}-checklist`);
+    if (!list) return;
     if (completions.length === 0) {
         list.innerHTML = `<li class="text-muted" style="padding:var(--space-sm) 0">No steps — go to Design to add some.</li>`;
         return;
@@ -62,8 +87,10 @@ function updateProgress(routine, completions) {
     const total = completions.length;
     const done = completions.filter(c => c.completed).length;
     const pct = total > 0 ? Math.round(done / total * 100) : 0;
-    document.getElementById(`${routine}-progress-text`).textContent = `${done} / ${total} done`;
-    document.getElementById(`${routine}-progress-bar`).style.width = `${pct}%`;
+    const text = document.getElementById(`${routine}-progress-text`);
+    const bar = document.getElementById(`${routine}-progress-bar`);
+    if (text) text.textContent = `${done} / ${total} done`;
+    if (bar) bar.style.width = `${pct}%`;
 }
 
 async function toggleItem(completionId) {
@@ -83,21 +110,22 @@ async function toggleItem(completionId) {
 // ── STREAKS ───────────────────────────────────────────────────────────────────
 
 async function loadStreaks() {
+    const grid = document.getElementById("streak-grid");
+    if (!grid) return;
     try {
         const streaks = await api.get("/tracker/api/streaks");
-        const grid = document.getElementById("streak-grid");
-        if (streaks.length === 0) {
-            grid.innerHTML = `<p class="text-muted">Add routine steps in Design to start tracking streaks.</p>`;
+        if (!Array.isArray(streaks) || streaks.length === 0) {
+            grid.innerHTML = `<p class="text-muted">No streaks yet. Add routine steps in Design and check them off to start.</p>`;
             return;
         }
         grid.innerHTML = streaks.map(s => `
             <div class="streak-card">
                 <div class="streak-number">${s.streak}</div>
                 <div class="streak-label">${escHtml(s.title)}</div>
-                <div class="badge ${badgeClass(s.routine)}" style="margin-top:4px">${s.routine}</div>
+                <div class="badge ${badgeClass(s.routine)}" style="margin-top:4px">${escHtml(s.routine)}</div>
             </div>`).join("");
     } catch (e) {
-        console.error("Streaks:", e);
+        grid.innerHTML = `<p class="text-muted">Couldn’t load streaks. ${escHtml(e.message || "Try refreshing.")}</p>`;
     }
 }
 
@@ -108,7 +136,10 @@ async function loadHistory() {
         const history = await api.get("/tracker/api/history?days=35");
         renderCalendar(history);
     } catch (e) {
-        console.error("History:", e);
+        const cal = document.getElementById("calendar-grid");
+        if (cal) {
+            cal.innerHTML = `<p class="text-muted">Couldn’t load history. ${escHtml(e.message || "")}</p>`;
+        }
     }
 }
 
