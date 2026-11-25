@@ -97,6 +97,12 @@
                         <input type="date" id="todo-due">
                     </div>
                 </div>
+                <div class="field" id="todo-goal-field">
+                    <label for="todo-goal">Link to goal (optional)</label>
+                    <select id="todo-goal">
+                        <option value="">—</option>
+                    </select>
+                </div>
                 <div class="flex gap-sm">
                     <button class="btn btn-primary btn-sm" type="button" id="todo-add-btn" onclick="addTodo()">Add</button>
                     <button class="btn btn-ghost btn-sm" type="button" onclick="toggleTodoForm(false)">Cancel</button>
@@ -126,21 +132,49 @@
 
                 <div id="main-tab-goals" class="tab-pane">
                     <div class="card-header">
-                        <h3 class="card-title">Near-term goals</h3>
+                        <h3 class="card-title">Goals</h3>
                         <button class="btn btn-secondary btn-sm" type="button" onclick="toggleGoalForm()">+ Add</button>
                     </div>
+                    <p class="text-muted" style="margin-bottom:var(--space-md);font-size:var(--font-size-sm)">
+                        Goal → this week’s commitments → linked tasks.
+                    </p>
                     <div class="add-form hidden" id="goal-form">
                         <div class="field">
                             <label for="goal-title">Goal</label>
                             <input type="text" id="goal-title" placeholder="e.g. Consistent Zone 2 week">
                         </div>
                         <div class="field">
-                            <label for="goal-desc">Notes</label>
-                            <input type="text" id="goal-desc" placeholder="Optional detail">
+                            <label for="goal-why">Why (optional)</label>
+                            <input type="text" id="goal-why" placeholder="What makes this matter?">
                         </div>
-                        <div class="field">
-                            <label for="goal-target">Target date</label>
-                            <input type="date" id="goal-target">
+                        <div class="form-grid-2">
+                            <div class="field">
+                                <label>Type</label>
+                                <div class="seg-control" id="goal-type-seg" data-value="project">
+                                    <button type="button" data-v="project" class="active" onclick="setGoalType('project')">Project</button>
+                                    <button type="button" data-v="metric" onclick="setGoalType('metric')">Metric</button>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label for="goal-target">Target date</label>
+                                <input type="date" id="goal-target">
+                            </div>
+                        </div>
+                        <div class="form-grid-2 hidden" id="goal-metric-fields">
+                            <div class="field">
+                                <label for="goal-metric-key">Metric</label>
+                                <select id="goal-metric-key">
+                                    <option value="workouts_week">Workouts / week</option>
+                                    <option value="protein_days">Protein days / week</option>
+                                    <option value="steps_days">Steps days / week</option>
+                                    <option value="routine_pct">Routine completion %</option>
+                                    <option value="weight">Weight (Phase 5)</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="goal-metric-target">Target value</label>
+                                <input type="number" id="goal-metric-target" min="0.1" step="0.1" placeholder="e.g. 3">
+                            </div>
                         </div>
                         <div class="flex gap-sm">
                             <button class="btn btn-primary btn-sm" type="button" onclick="addGoal()">Add goal</button>

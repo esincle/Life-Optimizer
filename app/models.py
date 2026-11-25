@@ -175,6 +175,7 @@ class Todo(db.Model):
     # today = day list · overall = longer backlog · idea = idea inbox
     bucket          = db.Column(db.String(20), nullable=False, default="overall", index=True)
     for_date        = db.Column(db.Date, nullable=True, index=True)  # used when bucket=today
+    goal_id         = db.Column(db.Integer, db.ForeignKey("goals.id"), nullable=True, index=True)
     created_at      = db.Column(db.DateTime, default=datetime.utcnow)
     completed_at    = db.Column(db.DateTime, nullable=True)
 
@@ -184,6 +185,7 @@ class Todo(db.Model):
         cascade="all, delete-orphan",
         order_by="TodoStep.position",
     )
+    goal = db.relationship("Goal", back_populates="todos")
 
     def to_dict(self, include_steps=True):
         data = {
@@ -200,6 +202,8 @@ class Todo(db.Model):
             "due_date": self.due_date.isoformat() if self.due_date else None,
             "bucket": self.bucket,
             "for_date": self.for_date.isoformat() if self.for_date else None,
+            "goal_id": self.goal_id,
+            "goal_title": self.goal.title if self.goal else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "steps_done": sum(1 for s in self.steps if s.done),
@@ -328,27 +332,81 @@ class Workout(db.Model):
 
 # ── NEAR-TERM GOALS ────────────────────────────────────────────────────────────
 
+VALID_GOAL_TYPES = ("project", "metric")
+VALID_METRIC_KEYS = (
+    "weight",
+    "protein_days",
+    "steps_days",
+    "workouts_week",
+    "routine_pct",
+)
+
+
 class Goal(db.Model):
     __tablename__ = "goals"
 
-    id          = db.Column(db.Integer, primary_key=True)
-    title       = db.Column(db.String(300), nullable=False)
-    description = db.Column(db.Text, nullable=True)
-    target_date = db.Column(db.Date, nullable=True)
-    status      = db.Column(db.String(20), nullable=False, default="active")  # active|done|dropped
-    created_at  = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at  = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    completed_at = db.Column(db.DateTime, nullable=True)
+    id            = db.Column(db.Integer, primary_key=True)
+    title         = db.Column(db.String(300), nullable=False)
+    description   = db.Column(db.Text, nullable=True)  # legacy notes; prefer why
+    why           = db.Column(db.Text, nullable=True)
+    target_date   = db.Column(db.Date, nullable=True)
+    status        = db.Column(db.String(20), nullable=False, default="active")  # active|done|dropped
+    goal_type     = db.Column(db.String(20), nullable=False, default="project")  # project|metric
+    metric_key    = db.Column(db.String(40), nullable=True)
+    metric_target = db.Column(db.Float, nullable=True)
+    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at    = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    completed_at  = db.Column(db.DateTime, nullable=True)
+
+    commitments = db.relationship(
+        "GoalCommitment",
+        back_populates="goal",
+        cascade="all, delete-orphan",
+        order_by="GoalCommitment.id",
+    )
+    todos = db.relationship("Todo", back_populates="goal")
+
+    def to_dict(self, include_extras=False):
+        data = {
+            "id": self.id,
+            "title": self.title,
+            "description": self.description,
+            "why": self.why or self.description,
+            "target_date": self.target_date.isoformat() if self.target_date else None,
+            "status": self.status,
+            "goal_type": self.goal_type or "project",
+            "metric_key": self.metric_key,
+            "metric_target": self.metric_target,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }
+        return data
+
+
+class GoalCommitment(db.Model):
+    """Weekly commitment line under a goal (ISO week starting Monday)."""
+    __tablename__ = "goal_commitments"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    goal_id    = db.Column(db.Integer, db.ForeignKey("goals.id"), nullable=False, index=True)
+    week_start = db.Column(db.Date, nullable=False, index=True)
+    text       = db.Column(db.String(400), nullable=False)
+    done       = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    goal = db.relationship("Goal", back_populates="commitments")
 
     def to_dict(self):
         return {
             "id": self.id,
-            "title": self.title,
-            "description": self.description,
-            "target_date": self.target_date.isoformat() if self.target_date else None,
-            "status": self.status,
+            "goal_id": self.goal_id,
+            "week_start": self.week_start.isoformat(),
+            "text": self.text,
+            "done": self.done,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
 

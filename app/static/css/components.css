@@ -1357,25 +1357,125 @@
 }
 
 .goal-item {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--space-md);
-    padding: var(--space-sm) 0;
+    padding: var(--space-md) 0;
     border-bottom: 1px solid var(--color-border);
 }
 
 .goal-item:last-child { border-bottom: none; }
 
+.goal-item.is-stalled {
+    background: rgba(180, 120, 60, 0.06);
+    margin: 0 calc(-1 * var(--space-sm));
+    padding-left: var(--space-sm);
+    padding-right: var(--space-sm);
+    border-radius: var(--radius-sm);
+}
+
+.goal-card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-md);
+}
+
 .goal-title {
     font-weight: 600;
     font-size: var(--font-size-sm);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
 }
 
 .goal-actions {
     display: flex;
     gap: var(--space-xs);
     flex-shrink: 0;
+}
+
+.goal-progress-wrap {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin: 6px 0;
+}
+
+.goal-progress-wrap .progress-wrap {
+    flex: 1;
+    max-width: 180px;
+}
+
+.goal-stalled {
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    color: #8a5a10;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.goal-commitments {
+    margin-top: var(--space-sm);
+    padding-top: var(--space-sm);
+    border-top: 1px dashed var(--color-border-soft);
+}
+
+.goal-commitments-head {
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 6px;
+}
+
+.goal-commitment-list {
+    list-style: none;
+    margin: 0 0 var(--space-sm);
+    padding: 0;
+}
+
+.goal-commitment {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 4px 0;
+    font-size: var(--font-size-sm);
+}
+
+.goal-commitment.done .goal-commitment-text {
+    text-decoration: line-through;
+    color: var(--color-text-muted);
+}
+
+.goal-commitment-text { flex: 1; }
+
+.goal-tag {
+    display: inline-block;
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    color: var(--color-accent-dark);
+    background: rgba(60, 100, 140, 0.1);
+    padding: 1px 6px;
+    border-radius: var(--radius-sm);
+    margin-left: 4px;
+}
+
+.todo-goal-row {
+    margin-top: 4px;
+    font-size: var(--font-size-xs);
+}
+
+.todo-goal-row label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.goal-link-select,
+#todo-goal {
+    max-width: 180px;
+    font-size: var(--font-size-xs);
+    padding: 2px 6px;
 }
 
 .add-form-row.wrap {

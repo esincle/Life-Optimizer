@@ -202,3 +202,38 @@ def migrate_schema():
                         ELSE 3
                     END
                 """))
+
+        cols = {c["name"] for c in inspect(engine).get_columns("todos")}
+        with engine.begin() as conn:
+            if "goal_id" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE todos ADD COLUMN goal_id INTEGER"
+                ))
+
+    # Phase 4: goal hierarchy fields
+    if "goals" in tables:
+        cols = {c["name"] for c in inspect(engine).get_columns("goals")}
+        with engine.begin() as conn:
+            if "why" not in cols:
+                conn.execute(text("ALTER TABLE goals ADD COLUMN why TEXT"))
+            if "goal_type" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE goals "
+                    "ADD COLUMN goal_type VARCHAR(20) NOT NULL DEFAULT 'project'"
+                ))
+            if "metric_key" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE goals ADD COLUMN metric_key VARCHAR(40)"
+                ))
+            if "metric_target" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE goals ADD COLUMN metric_target FLOAT"
+                ))
+            # Copy legacy description → why when why empty
+            conn.execute(text("""
+                UPDATE goals
+                SET why = description
+                WHERE (why IS NULL OR why = '')
+                  AND description IS NOT NULL
+                  AND description != ''
+            """))

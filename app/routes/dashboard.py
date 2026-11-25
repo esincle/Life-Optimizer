@@ -3,7 +3,8 @@ from flask import Blueprint, render_template, request, jsonify
 from app.extensions import db
 from app.models import (
     Todo, TodoStep, NutritionTarget, NutritionEntry, DailySteps,
-    Workout, Goal, Reminder, DailyLog, AppSettings,
+    Workout, Goal, GoalCommitment, Reminder, DailyLog, AppSettings,
+    VALID_GOAL_TYPES, VALID_METRIC_KEYS,
 )
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/today")
@@ -349,6 +350,17 @@ def create_todo():
     default_imp = 2
     default_eff = 2
 
+    goal_id = data.get("goal_id")
+    if goal_id in ("", None):
+        goal_id = None
+    else:
+        try:
+            goal_id = int(goal_id)
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid goal_id"}), 400
+        if not Goal.query.get(goal_id):
+            return jsonify({"error": "Goal not found"}), 400
+
     todo = Todo(
         title=title,
         notes=data.get("notes"),
@@ -358,6 +370,7 @@ def create_todo():
         due_date=parse_date(data.get("due_date")),
         bucket=bucket,
         for_date=for_date,
+        goal_id=goal_id,
     )
     db.session.add(todo)
     db.session.flush()
@@ -433,6 +446,18 @@ def update_todo(todo_id):
             for step in todo.steps:
                 step.done = False
                 step.completed_at = None
+    if "goal_id" in data:
+        raw = data.get("goal_id")
+        if raw in ("", None):
+            todo.goal_id = None
+        else:
+            try:
+                gid = int(raw)
+            except (TypeError, ValueError):
+                return jsonify({"error": "Invalid goal_id"}), 400
+            if not Goal.query.get(gid):
+                return jsonify({"error": "Goal not found"}), 400
+            todo.goal_id = gid
     db.session.commit()
     return jsonify(todo.to_dict())
 
@@ -1126,6 +1151,188 @@ def delete_workout(workout_id):
 
 # ── GOALS ──────────────────────────────────────────────────────────────────────
 
+METRIC_LABELS = {
+    "weight": "Weight",
+    "protein_days": "Protein days / week",
+    "steps_days": "Steps days / week",
+    "workouts_week": "Workouts / week",
+    "routine_pct": "Routine completion %",
+}
+
+
+def iso_week_start(d=None):
+    d = d or date.today()
+    return d - timedelta(days=d.weekday())
+
+
+def _metric_current(metric_key, week_start=None):
+    """Return (current_value, meta_dict) for a metric key this ISO week."""
+    today = date.today()
+    week_start = week_start or iso_week_start(today)
+    week_end = week_start + timedelta(days=6)
+    target = get_or_create_nutrition_target()
+
+    if metric_key == "weight":
+        return None, {
+            "available": False,
+            "unit": None,
+            "note": "Weight logging arrives in Phase 5",
+        }
+
+    if metric_key == "protein_days":
+        goal = target.protein_goal
+        if goal is None:
+            return 0, {"available": False, "unit": "days", "note": "Set a protein goal in Design"}
+        complete = {
+            row.log_date
+            for row in DailyLog.query.filter(
+                DailyLog.log_date >= week_start,
+                DailyLog.log_date <= min(week_end, today),
+                DailyLog.is_complete.is_(True),
+            ).all()
+        }
+        # Include today as in-progress for a live feel
+        days = set(complete)
+        days.add(today)
+        hit = 0
+        for d in days:
+            if d > today:
+                continue
+            entries = NutritionEntry.query.filter_by(log_date=d).all()
+            protein = sum(e.protein or 0 for e in entries)
+            lo = goal * (1 - PROTEIN_TOLERANCE)
+            hi = goal * (1 + PROTEIN_TOLERANCE)
+            if lo <= protein <= hi:
+                hit += 1
+        return hit, {"available": True, "unit": "days"}
+
+    if metric_key == "steps_days":
+        goal = target.steps_goal
+        if goal is None:
+            return 0, {"available": False, "unit": "days", "note": "Set a steps goal in Design"}
+        complete = {
+            row.log_date
+            for row in DailyLog.query.filter(
+                DailyLog.log_date >= week_start,
+                DailyLog.log_date <= min(week_end, today),
+                DailyLog.is_complete.is_(True),
+            ).all()
+        }
+        days = set(complete)
+        days.add(today)
+        hit = 0
+        for d in days:
+            if d > today:
+                continue
+            row = DailySteps.query.filter_by(log_date=d).first()
+            if row and row.count >= goal:
+                hit += 1
+        return hit, {"available": True, "unit": "days"}
+
+    if metric_key == "workouts_week":
+        n = Workout.query.filter(
+            Workout.log_date >= week_start,
+            Workout.log_date <= min(week_end, today),
+        ).count()
+        return n, {"available": True, "unit": "sessions"}
+
+    if metric_key == "routine_pct":
+        logs = DailyLog.query.filter(
+            DailyLog.log_date >= week_start,
+            DailyLog.log_date <= min(week_end, today),
+        ).all()
+        pcts = []
+        for log in logs:
+            comps = [
+                c for c in log.completions
+                if c.step and c.step.is_active
+            ]
+            if not comps:
+                continue
+            pcts.append(sum(1 for c in comps if c.completed) / len(comps) * 100)
+        if not pcts:
+            return 0, {"available": True, "unit": "%", "note": "No routines logged this week yet"}
+        return round(sum(pcts) / len(pcts)), {"available": True, "unit": "%"}
+
+    return None, {"available": False, "note": "Unknown metric"}
+
+
+def _goal_last_activity(goal):
+    """Latest datetime of meaningful activity on this goal."""
+    stamps = []
+    if goal.updated_at:
+        stamps.append(goal.updated_at)
+    if goal.created_at:
+        stamps.append(goal.created_at)
+    for c in goal.commitments:
+        if c.updated_at:
+            stamps.append(c.updated_at)
+        elif c.created_at:
+            stamps.append(c.created_at)
+    for t in goal.todos:
+        if t.completed_at:
+            stamps.append(t.completed_at)
+        if t.created_at:
+            stamps.append(t.created_at)
+    return max(stamps) if stamps else goal.created_at
+
+
+def enrich_goal(goal, week_start=None):
+    week_start = week_start or iso_week_start()
+    data = goal.to_dict()
+    week_commitments = [
+        c for c in goal.commitments if c.week_start == week_start
+    ]
+    data["week_start"] = week_start.isoformat()
+    data["commitments"] = [c.to_dict() for c in week_commitments]
+    data["commitments_done"] = sum(1 for c in week_commitments if c.done)
+    data["commitments_total"] = len(week_commitments)
+
+    linked = list(goal.todos)
+    linked_open = [t for t in linked if not t.done]
+    linked_done = [t for t in linked if t.done]
+    data["linked_todos"] = len(linked)
+    data["linked_open"] = len(linked_open)
+    data["linked_done"] = len(linked_done)
+
+    last = _goal_last_activity(goal)
+    data["last_activity_at"] = last.isoformat() if last else None
+    if last:
+        days_ago = (date.today() - last.date()).days
+    else:
+        days_ago = 999
+    data["last_activity_days"] = days_ago
+    data["stalled"] = goal.status == "active" and days_ago >= 7
+
+    if (goal.goal_type or "project") == "metric":
+        current, meta = _metric_current(goal.metric_key, week_start)
+        target_val = goal.metric_target
+        data["metric"] = {
+            "key": goal.metric_key,
+            "label": METRIC_LABELS.get(goal.metric_key, goal.metric_key),
+            "current": current,
+            "target": target_val,
+            **meta,
+        }
+        if current is not None and target_val and target_val > 0:
+            data["progress_pct"] = min(100, round(current / target_val * 100))
+        else:
+            data["progress_pct"] = 0
+    else:
+        # Project: prefer this week's commitments; else linked todos
+        if week_commitments:
+            data["progress_pct"] = round(
+                sum(1 for c in week_commitments if c.done) / len(week_commitments) * 100
+            )
+        elif linked:
+            data["progress_pct"] = round(len(linked_done) / len(linked) * 100)
+        else:
+            data["progress_pct"] = 0
+        data["metric"] = None
+
+    return data
+
+
 @dashboard_bp.route("/api/goals", methods=["GET"])
 def list_goals():
     status = request.args.get("status", "active")
@@ -1133,7 +1340,23 @@ def list_goals():
     if status != "all":
         q = q.filter_by(status=status)
     goals = q.order_by(Goal.target_date.asc(), Goal.created_at.desc()).all()
-    return jsonify([g.to_dict() for g in goals])
+    week_start = iso_week_start()
+    return jsonify([enrich_goal(g, week_start) for g in goals])
+
+
+@dashboard_bp.route("/api/goals/metrics", methods=["GET"])
+def list_goal_metrics():
+    """Catalog of linkable metrics for metric-type goals."""
+    items = []
+    for key in VALID_METRIC_KEYS:
+        current, meta = _metric_current(key)
+        items.append({
+            "key": key,
+            "label": METRIC_LABELS.get(key, key),
+            "current": current,
+            **meta,
+        })
+    return jsonify({"metrics": items, "week_start": iso_week_start().isoformat()})
 
 
 @dashboard_bp.route("/api/goals", methods=["POST"])
@@ -1142,15 +1365,41 @@ def create_goal():
     title = (data.get("title") or "").strip()
     if not title:
         return jsonify({"error": "Title is required"}), 400
+    goal_type = (data.get("goal_type") or "project").strip()
+    if goal_type not in VALID_GOAL_TYPES:
+        return jsonify({"error": "goal_type must be project or metric"}), 400
+    why = data.get("why")
+    if why is None:
+        why = data.get("description")
+    why = (why or "").strip() or None
+    metric_key = data.get("metric_key")
+    metric_target = data.get("metric_target")
+    if goal_type == "metric":
+        if metric_key not in VALID_METRIC_KEYS:
+            return jsonify({"error": "Invalid metric_key"}), 400
+        try:
+            metric_target = float(metric_target)
+        except (TypeError, ValueError):
+            return jsonify({"error": "metric_target required for metric goals"}), 400
+        if metric_target <= 0:
+            return jsonify({"error": "metric_target must be > 0"}), 400
+    else:
+        metric_key = None
+        metric_target = None
+
     goal = Goal(
         title=title,
-        description=data.get("description"),
+        description=why,
+        why=why,
         target_date=parse_date(data.get("target_date")),
         status="active",
+        goal_type=goal_type,
+        metric_key=metric_key,
+        metric_target=metric_target,
     )
     db.session.add(goal)
     db.session.commit()
-    return jsonify(goal.to_dict()), 201
+    return jsonify(enrich_goal(goal)), 201
 
 
 @dashboard_bp.route("/api/goals/<int:goal_id>", methods=["PUT"])
@@ -1162,24 +1411,111 @@ def update_goal(goal_id):
         if not title:
             return jsonify({"error": "Title is required"}), 400
         goal.title = title
-    if "description" in data:
-        goal.description = data["description"]
+    if "why" in data or "description" in data:
+        why = data.get("why") if "why" in data else data.get("description")
+        why = (why or "").strip() or None
+        goal.why = why
+        goal.description = why
     if "target_date" in data:
         goal.target_date = parse_date(data["target_date"])
+    if "goal_type" in data:
+        goal_type = (data["goal_type"] or "").strip()
+        if goal_type not in VALID_GOAL_TYPES:
+            return jsonify({"error": "goal_type must be project or metric"}), 400
+        goal.goal_type = goal_type
+        if goal_type == "project":
+            goal.metric_key = None
+            goal.metric_target = None
+    if "metric_key" in data or "metric_target" in data:
+        if (goal.goal_type or "project") != "metric":
+            return jsonify({"error": "Only metric goals use metric_key/target"}), 400
+        if "metric_key" in data:
+            key = data.get("metric_key")
+            if key not in VALID_METRIC_KEYS:
+                return jsonify({"error": "Invalid metric_key"}), 400
+            goal.metric_key = key
+        if "metric_target" in data:
+            try:
+                goal.metric_target = float(data.get("metric_target"))
+            except (TypeError, ValueError):
+                return jsonify({"error": "Invalid metric_target"}), 400
+            if goal.metric_target <= 0:
+                return jsonify({"error": "metric_target must be > 0"}), 400
     if "status" in data:
         status = data["status"]
         if status not in ("active", "done", "dropped"):
             return jsonify({"error": "Invalid status"}), 400
         goal.status = status
         goal.completed_at = datetime.utcnow() if status == "done" else None
+    goal.updated_at = datetime.utcnow()
     db.session.commit()
-    return jsonify(goal.to_dict())
+    return jsonify(enrich_goal(goal))
 
 
 @dashboard_bp.route("/api/goals/<int:goal_id>", methods=["DELETE"])
 def delete_goal(goal_id):
     goal = Goal.query.get_or_404(goal_id)
+    for t in Todo.query.filter_by(goal_id=goal.id).all():
+        t.goal_id = None
     db.session.delete(goal)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@dashboard_bp.route("/api/goals/<int:goal_id>/commitments", methods=["GET"])
+def list_commitments(goal_id):
+    goal = Goal.query.get_or_404(goal_id)
+    week = parse_date(request.args.get("week_start")) or iso_week_start()
+    rows = (GoalCommitment.query
+            .filter_by(goal_id=goal.id, week_start=week)
+            .order_by(GoalCommitment.id)
+            .all())
+    return jsonify({
+        "goal_id": goal.id,
+        "week_start": week.isoformat(),
+        "commitments": [c.to_dict() for c in rows],
+    })
+
+
+@dashboard_bp.route("/api/goals/<int:goal_id>/commitments", methods=["POST"])
+def create_commitment(goal_id):
+    goal = Goal.query.get_or_404(goal_id)
+    data = request.get_json() or {}
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "text is required"}), 400
+    week = parse_date(data.get("week_start")) or iso_week_start()
+    # Normalize to Monday
+    week = week - timedelta(days=week.weekday())
+    row = GoalCommitment(goal_id=goal.id, week_start=week, text=text, done=False)
+    db.session.add(row)
+    goal.updated_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify(row.to_dict()), 201
+
+
+@dashboard_bp.route("/api/commitments/<int:commitment_id>", methods=["PUT"])
+def update_commitment(commitment_id):
+    row = GoalCommitment.query.get_or_404(commitment_id)
+    data = request.get_json() or {}
+    if "text" in data:
+        text = (data["text"] or "").strip()
+        if not text:
+            return jsonify({"error": "text is required"}), 400
+        row.text = text
+    if "done" in data:
+        row.done = bool(data["done"])
+    row.updated_at = datetime.utcnow()
+    if row.goal:
+        row.goal.updated_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify(row.to_dict())
+
+
+@dashboard_bp.route("/api/commitments/<int:commitment_id>", methods=["DELETE"])
+def delete_commitment(commitment_id):
+    row = GoalCommitment.query.get_or_404(commitment_id)
+    db.session.delete(row)
     db.session.commit()
     return jsonify({"ok": True})
 

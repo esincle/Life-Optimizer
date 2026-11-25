@@ -508,6 +508,7 @@ function applyBucketFormMode() {
     document.getElementById("todo-metrics-fields").classList.toggle("hidden", isIdea);
     document.getElementById("todo-estimate-field")?.classList.toggle("hidden", isIdea);
     document.getElementById("todo-due-field").classList.toggle("hidden", isIdea);
+    document.getElementById("todo-goal-field")?.classList.toggle("hidden", isIdea);
     document.getElementById("todo-title-label").textContent = isIdea ? "Idea" : "Task";
     document.getElementById("plan-time-bar")?.classList.toggle("hidden", !isToday);
     document.getElementById("matrix-toggle")?.classList.toggle("hidden", currentTodoBucket !== "overall");
@@ -515,6 +516,21 @@ function applyBucketFormMode() {
         matrixView = false;
         document.getElementById("todo-matrix")?.classList.add("hidden");
         document.getElementById("todo-list")?.classList.remove("hidden");
+    }
+}
+
+async function populateGoalSelect(selectEl, selectedId) {
+    if (!selectEl) return;
+    try {
+        if (!window._activeGoals) {
+            window._activeGoals = await api.get("/today/api/goals?status=active");
+        }
+        const goals = window._activeGoals || [];
+        selectEl.innerHTML = `<option value="">—</option>` + goals.map(g =>
+            `<option value="${g.id}" ${String(selectedId || "") === String(g.id) ? "selected" : ""}>${escHtml(g.title)}</option>`
+        ).join("");
+    } catch (e) {
+        selectEl.innerHTML = `<option value="">—</option>`;
     }
 }
 
@@ -526,6 +542,7 @@ function toggleTodoForm(show) {
         applyBucketFormMode();
         setSeg("todo-importance-seg", 2);
         setSeg("todo-effort-seg", 2);
+        populateGoalSelect(document.getElementById("todo-goal"), null);
         document.getElementById("todo-title").focus();
     }
 }
@@ -578,10 +595,10 @@ async function loadTodos() {
         showToast(`Rolled ${todoMeta.rolled_forward} unfinished task${todoMeta.rolled_forward === 1 ? "" : "s"} to today`, "success");
     }
     updatePlanTimeBar(todoMeta);
-    renderTodoViews(todos);
+    await renderTodoViews(todos);
 }
 
-function renderTodoViews(todos) {
+async function renderTodoViews(todos) {
     const list = document.getElementById("todo-list");
     const empty = document.getElementById("todo-empty");
     const matrix = document.getElementById("todo-matrix");
@@ -602,12 +619,31 @@ function renderTodoViews(todos) {
         list.classList.add("hidden");
         matrix.classList.remove("hidden");
         matrix.innerHTML = matrixHtml(todos);
+        await fillTodoGoalSelects(matrix);
     } else {
         matrix?.classList.add("hidden");
         list.classList.remove("hidden");
         list.innerHTML = todos.map(todoItemHtml).join("");
         enableTodoDrag(list);
+        await fillTodoGoalSelects(list);
     }
+}
+
+async function fillTodoGoalSelects(root) {
+    const selects = (root || document).querySelectorAll("select[data-todo-goal]");
+    if (!selects.length) return;
+    try {
+        window._activeGoals = await api.get("/today/api/goals?status=active");
+    } catch (e) {
+        return;
+    }
+    const goals = window._activeGoals || [];
+    selects.forEach(sel => {
+        const selected = sel.dataset.selected || "";
+        sel.innerHTML = `<option value="">—</option>` + goals.map(g =>
+            `<option value="${g.id}" ${String(selected) === String(g.id) ? "selected" : ""}>${escHtml(g.title)}</option>`
+        ).join("");
+    });
 }
 
 function matrixQuadrant(imp, eff) {
@@ -706,6 +742,9 @@ function todoItemHtml(t) {
     const rollBadge = (t.rollover_count || 0) > 0
         ? `<span class="rollover-badge" title="Rolled over ${t.rollover_count} time(s)">↻${t.rollover_count}</span>`
         : "";
+    const goalTag = t.goal_title
+        ? `<span class="goal-tag" title="Linked goal">${escHtml(t.goal_title)}</span>`
+        : "";
 
     const metrics = isIdea
         ? (t.notes ? `<div class="check-meta">${escHtml(t.notes)}</div>` : "")
@@ -715,6 +754,14 @@ function todoItemHtml(t) {
                 <span class="metric" title="Estimate">${estimateSelectHtml(t.id, t.estimate_minutes)}</span>
                 ${stepProgress}
                 ${t.due_date ? `<span class="check-meta">Due ${escHtml(t.due_date)}</span>` : ""}
+           </div>
+           <div class="todo-goal-row">
+                <label class="text-muted">Goal
+                    <select class="goal-link-select" onchange="updateTodoField(${t.id},'goal_id',this.value===''?null:Number(this.value))"
+                        data-todo-goal="${t.id}" data-selected="${t.goal_id || ""}">
+                        <option value="">—</option>
+                    </select>
+                </label>
            </div>`;
 
     const addStep = isIdea ? "" : `
@@ -729,7 +776,7 @@ function todoItemHtml(t) {
         <div class="todo-row">
             <div class="check-box ${t.done ? "checked" : ""}" onclick="toggleTodo(${t.id})">${t.done ? "✓" : ""}</div>
             <div class="todo-body">
-                <div class="check-label">${escHtml(t.title)} ${rollBadge}</div>
+                <div class="check-label">${escHtml(t.title)} ${rollBadge} ${goalTag}</div>
                 ${metrics}
                 ${rolloverPromptHtml(t)}
                 ${moveButtonsHtml(t)}
@@ -794,6 +841,8 @@ async function addTodo(extra = {}) {
         const est = document.getElementById("todo-estimate").value;
         if (est) payload.estimate_minutes = Number(est);
         payload.due_date = document.getElementById("todo-due").value || null;
+        const goalId = document.getElementById("todo-goal")?.value;
+        if (goalId) payload.goal_id = Number(goalId);
         if (firstStep) payload.steps = [firstStep];
         if (currentTodoBucket === "today") {
             payload.for_date = localISODate();
@@ -807,6 +856,8 @@ async function addTodo(extra = {}) {
         document.getElementById("todo-notes").value = "";
         document.getElementById("todo-due").value = "";
         document.getElementById("todo-estimate").value = "";
+        const goalSel = document.getElementById("todo-goal");
+        if (goalSel) goalSel.value = "";
         setSeg("todo-importance-seg", 2);
         setSeg("todo-effort-seg", 2);
         toggleTodoForm(false);
@@ -931,47 +982,153 @@ function toggleGoalForm(show) {
     const form = document.getElementById("goal-form");
     const open = show === undefined ? form.classList.contains("hidden") : show;
     form.classList.toggle("hidden", !open);
-    if (open) document.getElementById("goal-title").focus();
+    if (open) {
+        setGoalType("project");
+        document.getElementById("goal-title").focus();
+    }
 }
 
-async function loadGoals() {
-    const goals = await api.get("/today/api/goals?status=active");
-    const list = document.getElementById("goal-list");
-    const empty = document.getElementById("goal-empty");
-    if (!goals.length) {
-        list.innerHTML = "";
-        empty.classList.remove("hidden");
-        return;
+function setGoalType(type) {
+    const seg = document.getElementById("goal-type-seg");
+    if (seg) {
+        seg.dataset.value = type;
+        seg.querySelectorAll("button").forEach(b => {
+            b.classList.toggle("active", b.dataset.v === type);
+        });
     }
-    empty.classList.add("hidden");
-    list.innerHTML = goals.map(g => `
-        <li class="goal-item" id="goal-${g.id}">
+    document.getElementById("goal-metric-fields")?.classList.toggle("hidden", type !== "metric");
+}
+
+function activityLabel(days) {
+    if (days == null || days >= 999) return "No activity yet";
+    if (days === 0) return "Last activity today";
+    if (days === 1) return "Last activity 1 day ago";
+    return `Last activity ${days} days ago`;
+}
+
+function goalCardHtml(g) {
+    const typeBadge = g.goal_type === "metric"
+        ? `<span class="badge">Metric</span>`
+        : `<span class="badge">Project</span>`;
+    const stalled = g.stalled ? `<span class="goal-stalled">Stalled</span>` : "";
+    const why = g.why ? `<div class="check-meta">${escHtml(g.why)}</div>` : "";
+    const target = g.target_date ? `<div class="check-meta">Target ${escHtml(g.target_date)}</div>` : "";
+    let metricLine = "";
+    if (g.goal_type === "metric" && g.metric) {
+        const cur = g.metric.current == null ? "—" : g.metric.current;
+        const note = g.metric.note ? ` · ${escHtml(g.metric.note)}` : "";
+        metricLine = `<div class="check-meta">${escHtml(g.metric.label || "")}: ${cur} / ${g.metric_target ?? "—"}${note}</div>`;
+    }
+    const commitments = (g.commitments || []).map(c => `
+        <li class="goal-commitment ${c.done ? "done" : ""}">
+            <div class="check-box ${c.done ? "checked" : ""}" onclick="toggleCommitment(${c.id}, ${!c.done})">${c.done ? "✓" : ""}</div>
+            <span class="goal-commitment-text">${escHtml(c.text)}</span>
+            <button class="btn btn-danger btn-sm" type="button" onclick="deleteCommitment(${c.id})" title="Remove">✕</button>
+        </li>`).join("");
+
+    return `
+    <li class="goal-item ${g.stalled ? "is-stalled" : ""}" id="goal-${g.id}">
+        <div class="goal-card-top">
             <div class="goal-main">
-                <div class="goal-title">${escHtml(g.title)}</div>
-                ${g.description ? `<div class="check-meta">${escHtml(g.description)}</div>` : ""}
-                ${g.target_date ? `<div class="check-meta">Target ${escHtml(g.target_date)}</div>` : ""}
+                <div class="goal-title">${escHtml(g.title)} ${typeBadge} ${stalled}</div>
+                ${why}${target}${metricLine}
+                <div class="goal-progress-wrap">
+                    <div class="progress-wrap"><div class="progress-bar" style="width:${g.progress_pct || 0}%"></div></div>
+                    <span class="check-meta">${g.progress_pct || 0}%</span>
+                </div>
+                <div class="check-meta">${activityLabel(g.last_activity_days)}
+                    ${g.linked_todos ? ` · ${g.linked_done}/${g.linked_todos} linked tasks done` : ""}</div>
             </div>
             <div class="goal-actions">
                 <button class="btn btn-secondary btn-sm" type="button" onclick="completeGoal(${g.id})">Done</button>
                 <button class="btn btn-danger btn-sm" type="button" onclick="deleteGoal(${g.id})">✕</button>
             </div>
-        </li>
-    `).join("");
+        </div>
+        <div class="goal-commitments">
+            <div class="goal-commitments-head">This week’s commitments</div>
+            <ul class="goal-commitment-list">${commitments || `<li class="text-muted">None yet</li>`}</ul>
+            <div class="todo-add-step">
+                <input type="text" id="commit-input-${g.id}" placeholder="Add a weekly commitment…"
+                    onkeydown="if(event.key==='Enter'){event.preventDefault();addCommitment(${g.id})}">
+                <button class="btn btn-secondary btn-sm" type="button" onclick="addCommitment(${g.id})">+ Commit</button>
+            </div>
+        </div>
+    </li>`;
+}
+
+async function loadGoals() {
+    try {
+        const goals = await api.get("/today/api/goals?status=active");
+        window._activeGoals = goals;
+        const list = document.getElementById("goal-list");
+        const empty = document.getElementById("goal-empty");
+        if (!goals.length) {
+            list.innerHTML = "";
+            empty.classList.remove("hidden");
+            return;
+        }
+        empty.classList.add("hidden");
+        list.innerHTML = goals.map(goalCardHtml).join("");
+    } catch (e) {
+        showToast(e.message, "error");
+        document.getElementById("goal-empty")?.classList.remove("hidden");
+    }
 }
 
 async function addGoal() {
     const title = document.getElementById("goal-title").value.trim();
     if (!title) return showToast("Enter a goal", "error");
-    const description = document.getElementById("goal-desc").value.trim() || null;
+    const why = document.getElementById("goal-why").value.trim() || null;
     const target_date = document.getElementById("goal-target").value || null;
+    const goal_type = document.getElementById("goal-type-seg")?.dataset.value || "project";
+    const payload = { title, why, target_date, goal_type };
+    if (goal_type === "metric") {
+        payload.metric_key = document.getElementById("goal-metric-key").value;
+        const raw = document.getElementById("goal-metric-target").value;
+        if (!raw) return showToast("Enter a metric target", "error");
+        payload.metric_target = Number(raw);
+    }
     try {
-        await api.post("/today/api/goals", { title, description, target_date });
+        await api.post("/today/api/goals", payload);
         document.getElementById("goal-title").value = "";
-        document.getElementById("goal-desc").value = "";
+        document.getElementById("goal-why").value = "";
         document.getElementById("goal-target").value = "";
+        document.getElementById("goal-metric-target").value = "";
         toggleGoalForm(false);
+        window._activeGoals = null;
         await loadGoals();
         showToast("Goal added", "success");
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+async function addCommitment(goalId) {
+    const input = document.getElementById(`commit-input-${goalId}`);
+    const text = input?.value.trim();
+    if (!text) return showToast("Enter a commitment", "error");
+    try {
+        await api.post(`/today/api/goals/${goalId}/commitments`, { text });
+        if (input) input.value = "";
+        await loadGoals();
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+async function toggleCommitment(id, done) {
+    try {
+        await api.put(`/today/api/commitments/${id}`, { done });
+        await loadGoals();
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+async function deleteCommitment(id) {
+    try {
+        await api.delete(`/today/api/commitments/${id}`);
+        await loadGoals();
     } catch (e) {
         showToast(e.message, "error");
     }
@@ -980,6 +1137,7 @@ async function addGoal() {
 async function completeGoal(id) {
     try {
         await api.put(`/today/api/goals/${id}`, { status: "done" });
+        window._activeGoals = null;
         await loadGoals();
         showToast("Goal completed", "success");
     } catch (e) {
@@ -990,6 +1148,7 @@ async function completeGoal(id) {
 async function deleteGoal(id) {
     try {
         await api.delete(`/today/api/goals/${id}`);
+        window._activeGoals = null;
         await loadGoals();
     } catch (e) {
         showToast(e.message, "error");
