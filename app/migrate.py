@@ -101,6 +101,24 @@ def migrate_schema():
                 conn.execute(text(
                     "ALTER TABLE daily_logs ADD COLUMN completed_at DATETIME"
                 ))
+            if "available_hours" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE daily_logs ADD COLUMN available_hours FLOAT"
+                ))
+
+    if "app_settings" in tables:
+        cols = {c["name"] for c in inspect(engine).get_columns("app_settings")}
+        with engine.begin() as conn:
+            if "todo_cap" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE app_settings "
+                    "ADD COLUMN todo_cap INTEGER NOT NULL DEFAULT 3"
+                ))
+            if "default_available_hours" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE app_settings "
+                    "ADD COLUMN default_available_hours FLOAT NOT NULL DEFAULT 4"
+                ))
 
     if "workouts" in tables:
         cols = {c["name"] for c in inspect(engine).get_columns("workouts")}
@@ -124,3 +142,43 @@ def migrate_schema():
                 conn.execute(text(
                     "ALTER TABLE todos ADD COLUMN for_date DATE"
                 ))
+            if "estimate_minutes" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE todos ADD COLUMN estimate_minutes INTEGER"
+                ))
+            if "rollover_count" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE todos "
+                    "ADD COLUMN rollover_count INTEGER NOT NULL DEFAULT 0"
+                ))
+            if "manual_position" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE todos ADD COLUMN manual_position INTEGER"
+                ))
+            if "manual_sort" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE todos "
+                    "ADD COLUMN manual_sort BOOLEAN NOT NULL DEFAULT 0"
+                ))
+
+        # One-time remap importance/effort from legacy 1–5 → 1–3
+        with engine.begin() as conn:
+            # Values > 3 only exist on the old scale
+            high = conn.execute(text(
+                "SELECT COUNT(*) FROM todos WHERE importance > 3 OR effort > 3"
+            )).scalar()
+            if high:
+                conn.execute(text("""
+                    UPDATE todos SET importance = CASE
+                        WHEN importance <= 1 THEN 1
+                        WHEN importance <= 3 THEN 2
+                        ELSE 3
+                    END
+                """))
+                conn.execute(text("""
+                    UPDATE todos SET effort = CASE
+                        WHEN effort <= 1 THEN 1
+                        WHEN effort <= 3 THEN 2
+                        ELSE 3
+                    END
+                """))

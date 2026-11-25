@@ -27,6 +27,14 @@
                     <label for="design-evening-from">Evening from</label>
                     <input type="time" id="design-evening-from" value="18:00">
                 </div>
+                <div class="field">
+                    <label for="design-todo-cap">Today task cap</label>
+                    <input type="number" id="design-todo-cap" min="1" max="20" step="1" value="3">
+                </div>
+                <div class="field">
+                    <label for="design-available-hours">Default available hours / day</label>
+                    <input type="number" id="design-available-hours" min="0.5" max="24" step="0.5" value="4">
+                </div>
             </div>
             <button class="btn btn-primary btn-sm" type="button" onclick="saveDayLoopSettings()">Save</button>
         </div>

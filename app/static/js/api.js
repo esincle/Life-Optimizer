@@ -11,9 +11,16 @@ async function apiFetch(url, options = {}) {
     const res = await fetch(url, merged);
     if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(err.error || "Request failed");
+        const e = new Error(err.error || "Request failed");
+        e.status = res.status;
+        e.data = err;
+        throw e;
     }
-    return res.json();
+    // 204 / empty
+    if (res.status === 204) return null;
+    const text = await res.text();
+    if (!text) return null;
+    return JSON.parse(text);
 }
 
 const api = {

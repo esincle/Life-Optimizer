@@ -82,9 +82,10 @@ class DailyLog(db.Model):
     log_date     = db.Column(db.Date, nullable=False, unique=True, index=True)
     notes        = db.Column(db.Text, nullable=True)
     # Set by evening shutdown (Phase 3); week stats only count complete days
-    is_complete  = db.Column(db.Boolean, nullable=False, default=False)
-    completed_at = db.Column(db.DateTime, nullable=True)
-    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+    is_complete      = db.Column(db.Boolean, nullable=False, default=False)
+    completed_at     = db.Column(db.DateTime, nullable=True)
+    available_hours  = db.Column(db.Float, nullable=True)  # overrides Design default for that day
+    created_at       = db.Column(db.DateTime, default=datetime.utcnow)
 
     completions     = db.relationship("RoutineCompletion", back_populates="daily_log",
                                       cascade="all, delete-orphan")
@@ -158,18 +159,22 @@ class JournalResponse(db.Model):
 class Todo(db.Model):
     __tablename__ = "todos"
 
-    id           = db.Column(db.Integer, primary_key=True)
-    title        = db.Column(db.String(300), nullable=False)
-    notes        = db.Column(db.Text, nullable=True)
-    done         = db.Column(db.Boolean, default=False, nullable=False)
-    importance   = db.Column(db.Integer, nullable=False, default=3)  # 1–5
-    effort       = db.Column(db.Integer, nullable=False, default=3)  # 1–5
-    due_date     = db.Column(db.Date, nullable=True)
+    id              = db.Column(db.Integer, primary_key=True)
+    title           = db.Column(db.String(300), nullable=False)
+    notes           = db.Column(db.Text, nullable=True)
+    done            = db.Column(db.Boolean, default=False, nullable=False)
+    importance      = db.Column(db.Integer, nullable=False, default=2)  # 1–3 Low/Med/High
+    effort          = db.Column(db.Integer, nullable=False, default=2)  # 1–3 Low/Med/High
+    estimate_minutes = db.Column(db.Integer, nullable=True)  # 15/30/60/120/240
+    rollover_count  = db.Column(db.Integer, nullable=False, default=0)
+    manual_position = db.Column(db.Integer, nullable=True)
+    manual_sort     = db.Column(db.Boolean, nullable=False, default=False)
+    due_date        = db.Column(db.Date, nullable=True)
     # today = day list · overall = longer backlog · idea = idea inbox
-    bucket       = db.Column(db.String(20), nullable=False, default="overall", index=True)
-    for_date     = db.Column(db.Date, nullable=True, index=True)  # used when bucket=today
-    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
-    completed_at = db.Column(db.DateTime, nullable=True)
+    bucket          = db.Column(db.String(20), nullable=False, default="overall", index=True)
+    for_date        = db.Column(db.Date, nullable=True, index=True)  # used when bucket=today
+    created_at      = db.Column(db.DateTime, default=datetime.utcnow)
+    completed_at    = db.Column(db.DateTime, nullable=True)
 
     steps = db.relationship(
         "TodoStep",
@@ -186,6 +191,10 @@ class Todo(db.Model):
             "done": self.done,
             "importance": self.importance,
             "effort": self.effort,
+            "estimate_minutes": self.estimate_minutes,
+            "rollover_count": self.rollover_count or 0,
+            "manual_position": self.manual_position,
+            "manual_sort": bool(self.manual_sort),
             "due_date": self.due_date.isoformat() if self.due_date else None,
             "bucket": self.bucket,
             "for_date": self.for_date.isoformat() if self.for_date else None,
@@ -347,16 +356,23 @@ class AppSettings(db.Model):
     """Singleton row for Design-configurable day loop times and caps."""
     __tablename__ = "app_settings"
 
-    id            = db.Column(db.Integer, primary_key=True)
-    morning_until = db.Column(db.String(5), nullable=False, default="12:00")  # HH:MM
-    evening_from  = db.Column(db.String(5), nullable=False, default="18:00")  # HH:MM
-    updated_at    = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    id                      = db.Column(db.Integer, primary_key=True)
+    morning_until           = db.Column(db.String(5), nullable=False, default="12:00")  # HH:MM
+    evening_from            = db.Column(db.String(5), nullable=False, default="18:00")  # HH:MM
+    todo_cap                = db.Column(db.Integer, nullable=False, default=3)
+    default_available_hours = db.Column(db.Float, nullable=False, default=4.0)
+    updated_at              = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self):
         return {
             "id": self.id,
             "morning_until": self.morning_until or "12:00",
             "evening_from": self.evening_from or "18:00",
+            "todo_cap": self.todo_cap if self.todo_cap is not None else 3,
+            "default_available_hours": (
+                self.default_available_hours
+                if self.default_available_hours is not None else 4.0
+            ),
         }
 
 

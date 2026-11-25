@@ -401,6 +401,31 @@ function switchTodoBucket(bucket, btn) {
     loadTodos();
 }
 
+let todoMeta = {};
+let matrixView = false;
+let lastTodos = [];
+
+const LEVEL_LABEL = { 1: "Low", 2: "Med", 3: "High" };
+const ESTIMATE_LABEL = { 15: "15m", 30: "30m", 60: "1h", 120: "2h", 240: "½ day" };
+
+function setSeg(id, value) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.dataset.value = String(value);
+    el.querySelectorAll("button").forEach(b => {
+        b.classList.toggle("active", Number(b.dataset.v) === value);
+    });
+}
+
+function formatMinutes(m) {
+    m = Math.max(0, Math.round(m || 0));
+    const h = Math.floor(m / 60);
+    const mins = m % 60;
+    if (h && mins) return `${h}h ${mins}m`;
+    if (h) return `${h}h`;
+    return `${mins}m`;
+}
+
 function applyBucketFormMode() {
     const copy = BUCKET_COPY[currentTodoBucket];
     document.getElementById("todo-bucket-title").textContent = copy.title;
@@ -409,11 +434,20 @@ function applyBucketFormMode() {
     document.getElementById("todo-add-btn").textContent = copy.addLabel;
 
     const isIdea = currentTodoBucket === "idea";
+    const isToday = currentTodoBucket === "today";
     document.getElementById("todo-step-field").classList.toggle("hidden", isIdea);
     document.getElementById("todo-notes-field").classList.toggle("hidden", !isIdea);
     document.getElementById("todo-metrics-fields").classList.toggle("hidden", isIdea);
+    document.getElementById("todo-estimate-field")?.classList.toggle("hidden", isIdea);
     document.getElementById("todo-due-field").classList.toggle("hidden", isIdea);
     document.getElementById("todo-title-label").textContent = isIdea ? "Idea" : "Task";
+    document.getElementById("plan-time-bar")?.classList.toggle("hidden", !isToday);
+    document.getElementById("matrix-toggle")?.classList.toggle("hidden", currentTodoBucket !== "overall");
+    if (currentTodoBucket !== "overall") {
+        matrixView = false;
+        document.getElementById("todo-matrix")?.classList.add("hidden");
+        document.getElementById("todo-list")?.classList.remove("hidden");
+    }
 }
 
 function toggleTodoForm(show) {
@@ -422,7 +456,43 @@ function toggleTodoForm(show) {
     form.classList.toggle("hidden", !open);
     if (open) {
         applyBucketFormMode();
+        setSeg("todo-importance-seg", 2);
+        setSeg("todo-effort-seg", 2);
         document.getElementById("todo-title").focus();
+    }
+}
+
+function toggleMatrixView() {
+    matrixView = !matrixView;
+    const btn = document.getElementById("matrix-toggle");
+    if (btn) btn.textContent = matrixView ? "List" : "Matrix";
+    renderTodoViews(lastTodos);
+}
+
+function updatePlanTimeBar(meta) {
+    const label = document.getElementById("plan-time-label");
+    const warn = document.getElementById("plan-time-warn");
+    const input = document.getElementById("available-hours-input");
+    if (!label || !meta) return;
+    const planned = meta.planned_minutes || 0;
+    const availH = meta.available_hours ?? 4;
+    const availM = Math.round(availH * 60);
+    label.textContent = `Planned: ${formatMinutes(planned)} / Available: ${formatMinutes(availM)}`;
+    warn?.classList.toggle("hidden", planned <= availM);
+    if (input) input.value = availH;
+}
+
+async function saveAvailableHours() {
+    const raw = document.getElementById("available-hours-input").value;
+    try {
+        await api.put("/today/api/day-plan", {
+            date: localISODate(),
+            available_hours: raw === "" ? null : Number(raw),
+        });
+        await loadTodos();
+        showToast("Available hours saved", "success");
+    } catch (e) {
+        showToast(e.message, "error");
     }
 }
 
@@ -431,11 +501,26 @@ async function loadTodos() {
     if (currentTodoBucket === "today") {
         url += `&date=${localISODate()}`;
     }
-    const todos = await api.get(url);
+    const data = await api.get(url);
+    // Back-compat if API ever returns a bare array
+    const todos = Array.isArray(data) ? data : (data.todos || []);
+    todoMeta = Array.isArray(data) ? {} : (data.meta || {});
+    lastTodos = todos;
+    if (todoMeta.rolled_forward) {
+        showToast(`Rolled ${todoMeta.rolled_forward} unfinished task${todoMeta.rolled_forward === 1 ? "" : "s"} to today`, "success");
+    }
+    updatePlanTimeBar(todoMeta);
+    renderTodoViews(todos);
+}
+
+function renderTodoViews(todos) {
     const list = document.getElementById("todo-list");
     const empty = document.getElementById("todo-empty");
+    const matrix = document.getElementById("todo-matrix");
     if (!todos.length) {
         list.innerHTML = "";
+        if (matrix) { matrix.innerHTML = ""; matrix.classList.add("hidden"); }
+        list.classList.remove("hidden");
         empty.classList.remove("hidden");
         empty.textContent = currentTodoBucket === "idea"
             ? "No ideas yet — capture one above."
@@ -445,19 +530,64 @@ async function loadTodos() {
         return;
     }
     empty.classList.add("hidden");
-    list.innerHTML = todos.map(todoItemHtml).join("");
+    if (matrixView && currentTodoBucket === "overall") {
+        list.classList.add("hidden");
+        matrix.classList.remove("hidden");
+        matrix.innerHTML = matrixHtml(todos);
+    } else {
+        matrix?.classList.add("hidden");
+        list.classList.remove("hidden");
+        list.innerHTML = todos.map(todoItemHtml).join("");
+        enableTodoDrag(list);
+    }
 }
 
-function dots(n, max = 5, filledClass = "dot-on") {
-    let html = "";
-    for (let i = 1; i <= max; i++) {
-        html += `<span class="metric-dot ${i <= n ? filledClass : ""}"></span>`;
+function matrixQuadrant(imp, eff) {
+    const highImp = imp >= 3;
+    const lowEff = eff <= 1;
+    if (highImp && lowEff) return "quick";
+    if (highImp && !lowEff) return "bets";
+    if (!highImp && lowEff) return "fill";
+    return "reconsider";
+}
+
+function matrixHtml(todos) {
+    const buckets = {
+        quick: { title: "Quick wins", hint: "High imp · Low effort", items: [] },
+        bets: { title: "Big bets", hint: "High imp · High effort", items: [] },
+        fill: { title: "Fill-ins", hint: "Low imp · Low effort", items: [] },
+        reconsider: { title: "Reconsider", hint: "Low imp · High effort", items: [] },
+    };
+    for (const t of todos) {
+        buckets[matrixQuadrant(t.importance, t.effort)].items.push(t);
     }
-    return html;
+    return Object.values(buckets).map(b => `
+        <div class="matrix-cell">
+            <div class="matrix-cell-title">${b.title}</div>
+            <div class="matrix-cell-hint text-muted">${b.hint}</div>
+            <ul class="todo-tree">${b.items.map(todoItemHtml).join("") || `<li class="text-muted">—</li>`}</ul>
+        </div>`).join("");
 }
 
 function kindLabel(kind) {
     return ({ zone2: "Zone 2", full: "Full", upper: "Upper", lower: "Lower" })[kind] || kind;
+}
+
+function segInlineHtml(todoId, field, value) {
+    return `<div class="seg-control seg-sm" data-todo="${todoId}" data-field="${field}">
+        ${[1, 2, 3].map(v => `
+            <button type="button" class="${v === value ? "active" : ""}"
+                onclick="updateTodoField(${todoId},'${field}',${v})">${LEVEL_LABEL[v]}</button>`).join("")}
+    </div>`;
+}
+
+function estimateSelectHtml(todoId, value) {
+    const opts = ["", 15, 30, 60, 120, 240].map(v => {
+        const label = v === "" ? "—" : ESTIMATE_LABEL[v];
+        const sel = String(value || "") === String(v) ? "selected" : "";
+        return `<option value="${v}" ${sel}>${label}</option>`;
+    }).join("");
+    return `<select class="estimate-select" onchange="updateTodoField(${todoId},'estimate_minutes',this.value===''?null:Number(this.value))">${opts}</select>`;
 }
 
 function moveButtonsHtml(t) {
@@ -474,6 +604,23 @@ function moveButtonsHtml(t) {
     return moves.length ? `<div class="todo-move-actions">${moves.join("")}</div>` : "";
 }
 
+function rolloverPromptHtml(t) {
+    if ((t.rollover_count || 0) < 3 || t.bucket !== "today") return "";
+    return `<div class="rollover-prompt">
+        Rolled ${t.rollover_count}× —
+        <button class="btn btn-ghost btn-sm" type="button" onclick="focusBreakDown(${t.id})">Break it down</button>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="moveTodo(${t.id},'overall')">Move to Overall</button>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="moveTodo(${t.id},'idea')">Move to Ideas</button>
+        <button class="btn btn-danger btn-sm" type="button" onclick="deleteTodo(${t.id})">Delete</button>
+    </div>`;
+}
+
+function focusBreakDown(todoId) {
+    const input = document.getElementById(`step-input-${todoId}`);
+    input?.focus();
+    input?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
 function todoItemHtml(t) {
     const isIdea = t.bucket === "idea";
     const steps = t.steps || [];
@@ -488,15 +635,16 @@ function todoItemHtml(t) {
         </li>
     `).join("");
 
+    const rollBadge = (t.rollover_count || 0) > 0
+        ? `<span class="rollover-badge" title="Rolled over ${t.rollover_count} time(s)">↻${t.rollover_count}</span>`
+        : "";
+
     const metrics = isIdea
         ? (t.notes ? `<div class="check-meta">${escHtml(t.notes)}</div>` : "")
         : `<div class="todo-metrics">
-                <span class="metric" title="Importance">
-                    <span class="metric-label">Imp</span>${dots(t.importance, 5, "dot-imp")}
-                </span>
-                <span class="metric" title="Effort">
-                    <span class="metric-label">Eff</span>${dots(t.effort, 5, "dot-eff")}
-                </span>
+                <span class="metric" title="Importance"><span class="metric-label">Imp</span>${segInlineHtml(t.id, "importance", t.importance)}</span>
+                <span class="metric" title="Effort"><span class="metric-label">Eff</span>${segInlineHtml(t.id, "effort", t.effort)}</span>
+                <span class="metric" title="Estimate">${estimateSelectHtml(t.id, t.estimate_minutes)}</span>
                 ${stepProgress}
                 ${t.due_date ? `<span class="check-meta">Due ${escHtml(t.due_date)}</span>` : ""}
            </div>`;
@@ -509,12 +657,13 @@ function todoItemHtml(t) {
         </div>`;
 
     return `
-    <li class="todo-block ${t.done ? "done" : ""}" id="todo-${t.id}">
+    <li class="todo-block ${t.done ? "done" : ""}" id="todo-${t.id}" draggable="${!isIdea}" data-id="${t.id}">
         <div class="todo-row">
             <div class="check-box ${t.done ? "checked" : ""}" onclick="toggleTodo(${t.id})">${t.done ? "✓" : ""}</div>
             <div class="todo-body">
-                <div class="check-label">${escHtml(t.title)}</div>
+                <div class="check-label">${escHtml(t.title)} ${rollBadge}</div>
                 ${metrics}
+                ${rolloverPromptHtml(t)}
                 ${moveButtonsHtml(t)}
             </div>
             <button class="btn btn-danger btn-sm" type="button" onclick="deleteTodo(${t.id})" title="Delete">✕</button>
@@ -523,18 +672,59 @@ function todoItemHtml(t) {
     </li>`;
 }
 
-async function addTodo() {
+function enableTodoDrag(list) {
+    let dragId = null;
+    list.querySelectorAll(".todo-block[draggable=true]").forEach(el => {
+        el.addEventListener("dragstart", () => { dragId = el.dataset.id; el.classList.add("dragging"); });
+        el.addEventListener("dragend", () => { el.classList.remove("dragging"); dragId = null; });
+        el.addEventListener("dragover", e => { e.preventDefault(); el.classList.add("drag-over"); });
+        el.addEventListener("dragleave", () => el.classList.remove("drag-over"));
+        el.addEventListener("drop", async e => {
+            e.preventDefault();
+            el.classList.remove("drag-over");
+            if (!dragId || dragId === el.dataset.id) return;
+            const ids = [...list.querySelectorAll(".todo-block")].map(n => Number(n.dataset.id));
+            const from = ids.indexOf(Number(dragId));
+            const to = ids.indexOf(Number(el.dataset.id));
+            if (from < 0 || to < 0) return;
+            ids.splice(to, 0, ids.splice(from, 1)[0]);
+            try {
+                await api.post("/today/api/todos/reorder", {
+                    bucket: currentTodoBucket,
+                    date: localISODate(),
+                    ordered_ids: ids,
+                });
+                await loadTodos();
+            } catch (err) {
+                showToast(err.message, "error");
+            }
+        });
+    });
+}
+
+async function updateTodoField(id, field, value) {
+    try {
+        await api.put(`/today/api/todos/${id}`, { [field]: value });
+        await loadTodos();
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+async function addTodo(extra = {}) {
     const title = document.getElementById("todo-title").value.trim();
     if (!title) return showToast(currentTodoBucket === "idea" ? "Enter an idea" : "Enter a task", "error");
 
-    const payload = { title, bucket: currentTodoBucket };
+    const payload = { title, bucket: currentTodoBucket, ...extra };
     if (currentTodoBucket === "idea") {
         const notes = document.getElementById("todo-notes").value.trim();
         if (notes) payload.notes = notes;
     } else {
         const firstStep = document.getElementById("todo-first-step").value.trim();
-        payload.importance = Number(document.getElementById("todo-importance").value);
-        payload.effort = Number(document.getElementById("todo-effort").value);
+        payload.importance = Number(document.getElementById("todo-importance-seg").dataset.value || 2);
+        payload.effort = Number(document.getElementById("todo-effort-seg").dataset.value || 2);
+        const est = document.getElementById("todo-estimate").value;
+        if (est) payload.estimate_minutes = Number(est);
         payload.due_date = document.getElementById("todo-due").value || null;
         if (firstStep) payload.steps = [firstStep];
         if (currentTodoBucket === "today") {
@@ -548,15 +738,58 @@ async function addTodo() {
         document.getElementById("todo-first-step").value = "";
         document.getElementById("todo-notes").value = "";
         document.getElementById("todo-due").value = "";
-        document.getElementById("todo-importance").value = 3;
-        document.getElementById("todo-effort").value = 3;
-        document.getElementById("todo-imp-val").textContent = "3";
-        document.getElementById("todo-eff-val").textContent = "3";
+        document.getElementById("todo-estimate").value = "";
+        setSeg("todo-importance-seg", 2);
+        setSeg("todo-effort-seg", 2);
         toggleTodoForm(false);
         await loadTodos();
         showToast(currentTodoBucket === "idea" ? "Idea saved" : "Todo added", "success");
     } catch (e) {
+        if (e.data?.code === "cap_exceeded") {
+            await handleCapExceeded(payload, e.data);
+            return;
+        }
         showToast(e.message, "error");
+    }
+}
+
+async function handleCapExceeded(payload, data) {
+    const open = data.open_todos || [];
+    const names = open.map(t => `• ${t.title}`).join("\n");
+    const choice = window.prompt(
+        `Today is capped at ${data.todo_cap} tasks.\n\nOpen tasks:\n${names}\n\nType a task number (1–${open.length}) to swap it out to Overall,\nor type OVERALL to add this new task to Overall instead.`,
+    );
+    if (choice == null) return;
+    const trimmed = choice.trim().toLowerCase();
+    if (trimmed === "overall") {
+        payload.bucket = "overall";
+        delete payload.for_date;
+        payload.force = true;
+        try {
+            await api.post("/today/api/todos", payload);
+            toggleTodoForm(false);
+            currentTodoBucket = "overall";
+            applyBucketFormMode();
+            await loadTodos();
+            showToast("Added to Overall", "success");
+        } catch (err) {
+            showToast(err.message, "error");
+        }
+        return;
+    }
+    const idx = Number(choice) - 1;
+    if (!Number.isInteger(idx) || idx < 0 || idx >= open.length) {
+        showToast("Cancelled — invalid choice", "error");
+        return;
+    }
+    payload.swap_out_id = open[idx].id;
+    try {
+        await api.post("/today/api/todos", payload);
+        toggleTodoForm(false);
+        await loadTodos();
+        showToast(`Swapped out “${open[idx].title}” → Overall`, "success");
+    } catch (err) {
+        showToast(err.message, "error");
     }
 }
 
@@ -568,6 +801,10 @@ async function moveTodo(id, bucket) {
         await loadTodos();
         showToast(`Moved to ${bucket === "idea" ? "Ideas" : bucket === "today" ? "Today" : "Overall"}`, "success");
     } catch (e) {
+        if (e.data?.code === "cap_exceeded") {
+            showToast(`Today is full (cap ${e.data.todo_cap}). Free a slot first.`, "error");
+            return;
+        }
         showToast(e.message, "error");
     }
 }

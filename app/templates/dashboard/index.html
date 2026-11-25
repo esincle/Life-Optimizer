@@ -23,9 +23,21 @@
                     <p class="section-kicker">Priorities</p>
                     <h3 class="card-title" id="todo-bucket-title">Today’s to-dos</h3>
                 </div>
-                <button class="btn btn-secondary btn-sm" type="button" onclick="toggleTodoForm()">+ Add</button>
+                <div class="flex gap-sm items-center">
+                    <button class="btn btn-ghost btn-sm hidden" type="button" id="matrix-toggle" onclick="toggleMatrixView()">Matrix</button>
+                    <button class="btn btn-secondary btn-sm" type="button" onclick="toggleTodoForm()">+ Add</button>
+                </div>
             </div>
             <p class="bucket-hint text-muted" id="bucket-hint">Tasks for today — tick them off as you go.</p>
+            <div class="plan-time-bar" id="plan-time-bar">
+                <span id="plan-time-label">Planned: — / Available: —</span>
+                <span class="plan-time-warn hidden" id="plan-time-warn">Over available time</span>
+                <label class="plan-avail-edit text-muted">
+                    Available
+                    <input type="number" id="available-hours-input" min="0.5" max="24" step="0.5" style="max-width:70px">
+                    <button class="btn btn-ghost btn-sm" type="button" onclick="saveAvailableHours()">Set</button>
+                </label>
+            </div>
 
             <div class="add-form hidden" id="todo-form">
                 <div class="field">
@@ -42,23 +54,45 @@
                 </div>
                 <div class="form-grid-2" id="todo-metrics-fields">
                     <div class="field">
-                        <label for="todo-importance">Importance <span id="todo-imp-val">3</span>/5</label>
-                        <input type="range" id="todo-importance" min="1" max="5" value="3" oninput="document.getElementById('todo-imp-val').textContent=this.value">
+                        <label>Importance</label>
+                        <div class="seg-control" id="todo-importance-seg" data-value="2">
+                            <button type="button" data-v="1" onclick="setSeg('todo-importance-seg',1)">Low</button>
+                            <button type="button" data-v="2" class="active" onclick="setSeg('todo-importance-seg',2)">Med</button>
+                            <button type="button" data-v="3" onclick="setSeg('todo-importance-seg',3)">High</button>
+                        </div>
                     </div>
                     <div class="field">
-                        <label for="todo-effort">Effort <span id="todo-eff-val">3</span>/5</label>
-                        <input type="range" id="todo-effort" min="1" max="5" value="3" oninput="document.getElementById('todo-eff-val').textContent=this.value">
+                        <label>Effort</label>
+                        <div class="seg-control" id="todo-effort-seg" data-value="2">
+                            <button type="button" data-v="1" onclick="setSeg('todo-effort-seg',1)">Low</button>
+                            <button type="button" data-v="2" class="active" onclick="setSeg('todo-effort-seg',2)">Med</button>
+                            <button type="button" data-v="3" onclick="setSeg('todo-effort-seg',3)">High</button>
+                        </div>
                     </div>
                 </div>
-                <div class="field" id="todo-due-field">
-                    <label for="todo-due">Due (optional)</label>
-                    <input type="date" id="todo-due">
+                <div class="form-grid-2" id="todo-estimate-field">
+                    <div class="field">
+                        <label for="todo-estimate">Time estimate</label>
+                        <select id="todo-estimate">
+                            <option value="">—</option>
+                            <option value="15">15m</option>
+                            <option value="30">30m</option>
+                            <option value="60">1h</option>
+                            <option value="120">2h</option>
+                            <option value="240">Half-day</option>
+                        </select>
+                    </div>
+                    <div class="field" id="todo-due-field">
+                        <label for="todo-due">Due (optional)</label>
+                        <input type="date" id="todo-due">
+                    </div>
                 </div>
                 <div class="flex gap-sm">
                     <button class="btn btn-primary btn-sm" type="button" id="todo-add-btn" onclick="addTodo()">Add</button>
                     <button class="btn btn-ghost btn-sm" type="button" onclick="toggleTodoForm(false)">Cancel</button>
                 </div>
             </div>
+            <div id="todo-matrix" class="todo-matrix hidden"></div>
             <ul class="todo-tree" id="todo-list"></ul>
             <p class="empty-hint text-muted hidden" id="todo-empty">Nothing here yet — add one above.</p>
 

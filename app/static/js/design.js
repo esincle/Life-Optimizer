@@ -24,6 +24,8 @@ async function loadDayLoopSettings() {
         const s = await api.get("/design/api/settings");
         document.getElementById("design-morning-until").value = s.morning_until || "12:00";
         document.getElementById("design-evening-from").value = s.evening_from || "18:00";
+        document.getElementById("design-todo-cap").value = s.todo_cap ?? 3;
+        document.getElementById("design-available-hours").value = s.default_available_hours ?? 4;
     } catch (e) {
         showToast(e.message, "error");
     }
@@ -34,8 +36,10 @@ async function saveDayLoopSettings() {
         await api.put("/design/api/settings", {
             morning_until: document.getElementById("design-morning-until").value,
             evening_from: document.getElementById("design-evening-from").value,
+            todo_cap: Number(document.getElementById("design-todo-cap").value),
+            default_available_hours: Number(document.getElementById("design-available-hours").value),
         });
-        showToast("Day loop times saved", "success");
+        showToast("Day loop settings saved", "success");
     } catch (e) {
         showToast(e.message, "error");
     }

@@ -3,7 +3,7 @@ from flask import Blueprint, render_template, request, jsonify
 from app.extensions import db
 from app.models import (
     Todo, TodoStep, NutritionTarget, NutritionEntry, DailySteps,
-    Workout, Goal, Reminder, DailyLog,
+    Workout, Goal, Reminder, DailyLog, AppSettings,
 )
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/today")
@@ -104,6 +104,63 @@ def sync_todo_completion(todo):
 # ── TODOS ──────────────────────────────────────────────────────────────────────
 
 VALID_TODO_BUCKETS = ("today", "overall", "idea")
+VALID_ESTIMATES = (15, 30, 60, 120, 240)
+
+
+def get_or_create_app_settings():
+    row = AppSettings.query.first()
+    if not row:
+        row = AppSettings(
+            morning_until="12:00",
+            evening_from="18:00",
+            todo_cap=3,
+            default_available_hours=4.0,
+        )
+        db.session.add(row)
+        db.session.commit()
+    return row
+
+
+def get_or_create_daily_log(day):
+    log = DailyLog.query.filter_by(log_date=day).first()
+    if not log:
+        log = DailyLog(log_date=day)
+        db.session.add(log)
+        db.session.flush()
+    return log
+
+
+def roll_forward_today_todos(day):
+    """Unfinished today-bucket tasks from earlier dates roll to `day`."""
+    stale = (Todo.query
+             .filter(
+                 Todo.bucket == "today",
+                 Todo.done.is_(False),
+                 Todo.for_date.isnot(None),
+                 Todo.for_date < day,
+             )
+             .all())
+    for t in stale:
+        t.for_date = day
+        t.rollover_count = (t.rollover_count or 0) + 1
+        t.manual_sort = False
+        t.manual_position = None
+    if stale:
+        db.session.commit()
+    return len(stale)
+
+
+def sort_todos(todos):
+    """Manual order first (if flagged), else importance desc → effort asc."""
+    manual = [t for t in todos if t.manual_sort]
+    auto = [t for t in todos if not t.manual_sort]
+    manual.sort(key=lambda t: (t.manual_position is None, t.manual_position or 0, t.id))
+    auto.sort(key=lambda t: (-(t.importance or 0), t.effort or 0, -(t.id or 0)))
+    return manual + auto
+
+
+def count_open_today(day):
+    return Todo.query.filter_by(bucket="today", done=False, for_date=day).count()
 
 
 @dashboard_bp.route("/api/todos", methods=["GET"])
@@ -115,21 +172,46 @@ def list_todos():
     if bucket not in VALID_TODO_BUCKETS:
         return jsonify({"error": "bucket must be today, overall, or idea"}), 400
 
+    settings = get_or_create_app_settings()
+    day = parse_date(request.args.get("date"), date.today())
+    rolled = 0
+    if bucket == "today":
+        rolled = roll_forward_today_todos(day)
+
     q = Todo.query.filter_by(bucket=bucket)
     if not include_done:
         q = q.filter_by(done=False)
 
     if bucket == "today":
-        day = parse_date(request.args.get("date"), date.today())
         q = q.filter(Todo.for_date == day)
 
+    todos = q.all()
     if bucket == "idea":
-        todos = q.order_by(Todo.id.desc()).all()
+        todos.sort(key=lambda t: -(t.id or 0))
     else:
-        todos = q.order_by(
-            Todo.done.asc(), Todo.importance.desc(), Todo.effort.asc(), Todo.id.desc()
-        ).all()
-    return jsonify([t.to_dict() for t in todos])
+        todos = sort_todos(todos)
+
+    log = DailyLog.query.filter_by(log_date=day).first()
+    available = (
+        log.available_hours
+        if log and log.available_hours is not None
+        else settings.default_available_hours
+    )
+    planned_minutes = sum(t.estimate_minutes or 0 for t in todos if not t.done)
+
+    return jsonify({
+        "todos": [t.to_dict() for t in todos],
+        "meta": {
+            "bucket": bucket,
+            "date": day.isoformat(),
+            "todo_cap": settings.todo_cap,
+            "open_today_count": count_open_today(day),
+            "available_hours": available,
+            "default_available_hours": settings.default_available_hours,
+            "planned_minutes": planned_minutes,
+            "rolled_forward": rolled,
+        },
+    })
 
 
 @dashboard_bp.route("/api/todos/completed", methods=["GET"])
@@ -226,15 +308,53 @@ def create_todo():
     else:
         for_date = None
 
-    # Ideas stay light — default mid importance/effort unless provided
-    default_imp = 3 if bucket != "idea" else 2
-    default_eff = 3 if bucket != "idea" else 1
+    settings = get_or_create_app_settings()
+    force = bool(data.get("force"))
+    swap_out_id = data.get("swap_out_id")
+
+    if bucket == "today" and not force:
+        open_count = count_open_today(for_date)
+        if open_count >= settings.todo_cap:
+            if swap_out_id:
+                victim = Todo.query.get(swap_out_id)
+                if not victim or victim.bucket != "today" or victim.for_date != for_date:
+                    return jsonify({"error": "swap_out_id must be an open Today task"}), 400
+                victim.bucket = "overall"
+                victim.for_date = None
+                victim.manual_sort = False
+                victim.manual_position = None
+            else:
+                open_todos = (Todo.query
+                              .filter_by(bucket="today", done=False, for_date=for_date)
+                              .all())
+                return jsonify({
+                    "error": f"Today is capped at {settings.todo_cap} tasks",
+                    "code": "cap_exceeded",
+                    "todo_cap": settings.todo_cap,
+                    "open_todos": [t.to_dict(include_steps=False) for t in sort_todos(open_todos)],
+                }), 409
+
+    estimate = data.get("estimate_minutes")
+    if estimate in ("", None):
+        estimate = None
+    else:
+        try:
+            estimate = int(estimate)
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid estimate_minutes"}), 400
+        if estimate not in VALID_ESTIMATES:
+            return jsonify({"error": "estimate_minutes must be 15, 30, 60, 120, or 240"}), 400
+
+    # Default Med/Med (2/2) on the 1–3 scale
+    default_imp = 2
+    default_eff = 2
 
     todo = Todo(
         title=title,
         notes=data.get("notes"),
-        importance=_clamp(data.get("importance", default_imp), 1, 5),
-        effort=_clamp(data.get("effort", default_eff), 1, 5),
+        importance=_clamp(data.get("importance", default_imp), 1, 3),
+        effort=_clamp(data.get("effort", default_eff), 1, 3),
+        estimate_minutes=estimate,
         due_date=parse_date(data.get("due_date")),
         bucket=bucket,
         for_date=for_date,
@@ -262,20 +382,43 @@ def update_todo(todo_id):
     if "notes" in data:
         todo.notes = data["notes"]
     if "importance" in data:
-        todo.importance = _clamp(data["importance"], 1, 5)
+        todo.importance = _clamp(data["importance"], 1, 3)
     if "effort" in data:
-        todo.effort = _clamp(data["effort"], 1, 5)
+        todo.effort = _clamp(data["effort"], 1, 3)
+    if "estimate_minutes" in data:
+        estimate = data.get("estimate_minutes")
+        if estimate in ("", None):
+            todo.estimate_minutes = None
+        else:
+            try:
+                estimate = int(estimate)
+            except (TypeError, ValueError):
+                return jsonify({"error": "Invalid estimate_minutes"}), 400
+            if estimate not in VALID_ESTIMATES:
+                return jsonify({"error": "estimate_minutes must be 15, 30, 60, 120, or 240"}), 400
+            todo.estimate_minutes = estimate
     if "due_date" in data:
         todo.due_date = parse_date(data["due_date"])
     if "bucket" in data:
         bucket = (data["bucket"] or "").strip()
         if bucket not in VALID_TODO_BUCKETS:
             return jsonify({"error": "Invalid bucket"}), 400
+        if bucket == "today" and todo.bucket != "today":
+            settings = get_or_create_app_settings()
+            day = parse_date(data.get("for_date"), date.today())
+            if count_open_today(day) >= settings.todo_cap and not data.get("force"):
+                return jsonify({
+                    "error": f"Today is capped at {settings.todo_cap} tasks",
+                    "code": "cap_exceeded",
+                    "todo_cap": settings.todo_cap,
+                }), 409
         todo.bucket = bucket
         if bucket == "today":
             todo.for_date = parse_date(data.get("for_date"), todo.for_date or date.today())
         else:
             todo.for_date = None
+            todo.manual_sort = False
+            todo.manual_position = None
     elif "for_date" in data and todo.bucket == "today":
         todo.for_date = parse_date(data["for_date"], date.today())
     if "done" in data:
@@ -292,6 +435,79 @@ def update_todo(todo_id):
                 step.completed_at = None
     db.session.commit()
     return jsonify(todo.to_dict())
+
+
+@dashboard_bp.route("/api/todos/reorder", methods=["POST"])
+def reorder_todos():
+    """Persist manual drag order for Today or Overall."""
+    data = request.get_json() or {}
+    bucket = (data.get("bucket") or "today").strip()
+    if bucket not in ("today", "overall"):
+        return jsonify({"error": "bucket must be today or overall"}), 400
+    ids = data.get("ordered_ids") or []
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"error": "ordered_ids required"}), 400
+    day = parse_date(data.get("date"), date.today())
+    for i, tid in enumerate(ids):
+        todo = Todo.query.get(tid)
+        if not todo or todo.bucket != bucket:
+            continue
+        if bucket == "today" and todo.for_date != day:
+            continue
+        todo.manual_sort = True
+        todo.manual_position = i
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@dashboard_bp.route("/api/day-plan", methods=["GET"])
+def get_day_plan():
+    day = parse_date(request.args.get("date"), date.today())
+    settings = get_or_create_app_settings()
+    log = DailyLog.query.filter_by(log_date=day).first()
+    available = (
+        log.available_hours
+        if log and log.available_hours is not None
+        else settings.default_available_hours
+    )
+    todos = Todo.query.filter_by(bucket="today", done=False, for_date=day).all()
+    planned = sum(t.estimate_minutes or 0 for t in todos)
+    return jsonify({
+        "date": day.isoformat(),
+        "available_hours": available,
+        "default_available_hours": settings.default_available_hours,
+        "planned_minutes": planned,
+        "todo_cap": settings.todo_cap,
+        "open_count": len(todos),
+    })
+
+
+@dashboard_bp.route("/api/day-plan", methods=["PUT"])
+def put_day_plan():
+    data = request.get_json() or {}
+    day = parse_date(data.get("date"), date.today())
+    log = get_or_create_daily_log(day)
+    if "available_hours" in data:
+        raw = data.get("available_hours")
+        if raw in ("", None):
+            log.available_hours = None
+        else:
+            try:
+                log.available_hours = max(0.5, min(24, float(raw)))
+            except (TypeError, ValueError):
+                return jsonify({"error": "available_hours must be a number"}), 400
+    db.session.commit()
+    settings = get_or_create_app_settings()
+    available = (
+        log.available_hours
+        if log.available_hours is not None
+        else settings.default_available_hours
+    )
+    return jsonify({
+        "date": day.isoformat(),
+        "available_hours": available,
+        "default_available_hours": settings.default_available_hours,
+    })
 
 
 @dashboard_bp.route("/api/todos/<int:todo_id>/toggle", methods=["POST"])

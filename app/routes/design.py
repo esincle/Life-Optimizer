@@ -11,7 +11,12 @@ _TIME_RE = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
 def get_or_create_app_settings():
     row = AppSettings.query.first()
     if not row:
-        row = AppSettings(morning_until="12:00", evening_from="18:00")
+        row = AppSettings(
+            morning_until="12:00",
+            evening_from="18:00",
+            todo_cap=3,
+            default_available_hours=4.0,
+        )
         db.session.add(row)
         db.session.commit()
     return row
@@ -41,6 +46,16 @@ def update_settings():
         if not _TIME_RE.match(val):
             return jsonify({"error": "evening_from must be HH:MM"}), 400
         row.evening_from = val
+    if "todo_cap" in data:
+        try:
+            row.todo_cap = max(1, min(20, int(data["todo_cap"])))
+        except (TypeError, ValueError):
+            return jsonify({"error": "todo_cap must be an integer"}), 400
+    if "default_available_hours" in data:
+        try:
+            row.default_available_hours = max(0.5, min(24, float(data["default_available_hours"])))
+        except (TypeError, ValueError):
+            return jsonify({"error": "default_available_hours must be a number"}), 400
     db.session.commit()
     return jsonify(row.to_dict())
 
